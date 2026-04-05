@@ -7,24 +7,63 @@ import {
   moveToken,
   cpuSelectToken,
 } from '@/lib/ludoGame';
+import { soundManager } from '@/lib/soundManager';
 import GameSetup from '@/components/GameSetup';
 import LudoBoard from '@/components/LudoBoard';
 import Dice from '@/components/Dice';
 import PlayerPanel from '@/components/PlayerPanel';
+import RulesModal from '@/components/RulesModal';
 import woodTable from '@/assets/wood-table.jpg';
 
 const LudoGame: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [movableTokens, setMovableTokens] = useState<number[]>([]);
+  const [soundOn, setSoundOn] = useState(true);
+  const [animatingToken, setAnimatingToken] = useState<{ color: PlayerColor; id: number } | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const prevStateRef = useRef<GameState | null>(null);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    soundManager.setEnabled(next);
+  };
 
   const handleStart = (configs: { color: PlayerColor; type: PlayerType }[]) => {
     setGameState(createInitialState(configs));
   };
 
+  // Detect events from state changes for sound
+  useEffect(() => {
+    if (!gameState || !prevStateRef.current) {
+      prevStateRef.current = gameState;
+      return;
+    }
+    const prev = prevStateRef.current;
+
+    // Check for win
+    if (gameState.phase === 'finished' && prev.phase !== 'finished') {
+      soundManager.win();
+    }
+
+    // Check for kills - a token went home that wasn't home before
+    if (gameState.message.includes('💀')) {
+      soundManager.tokenKill();
+    } else if (gameState.message.includes('🎉')) {
+      soundManager.tokenGoal();
+    } else if (gameState.message.includes("can't move")) {
+      soundManager.cantMove();
+    } else if (gameState.message.includes('moved a token out')) {
+      soundManager.tokenOut();
+    }
+
+    prevStateRef.current = gameState;
+  }, [gameState]);
+
   const handleRoll = useCallback(() => {
     if (!gameState || gameState.phase !== 'rolling') return;
 
+    soundManager.diceRoll();
     const newState = { ...gameState, isRolling: true };
     setGameState(newState);
 
@@ -41,7 +80,6 @@ const LudoGame: React.FC = () => {
       const movable = getMovableTokens(player, dice, stateWithDice);
 
       if (movable.length === 0) {
-        // No moves available, skip turn
         const nextIdx = (stateWithDice.currentPlayerIndex + 1) % stateWithDice.players.length;
         const skipped: GameState = {
           ...stateWithDice,
@@ -54,10 +92,13 @@ const LudoGame: React.FC = () => {
         setGameState(skipped);
         setMovableTokens([]);
       } else if (movable.length === 1) {
-        // Auto-move single option
         setMovableTokens(movable);
+        // Animate then move
+        setAnimatingToken({ color: player.color, id: movable[0] });
+        soundManager.tokenMove();
         const result = moveToken(stateWithDice, movable[0]);
         setTimeout(() => {
+          setAnimatingToken(null);
           setGameState(result);
           setMovableTokens([]);
         }, 500);
@@ -75,9 +116,16 @@ const LudoGame: React.FC = () => {
     if (color !== currentPlayer.color) return;
     if (!movableTokens.includes(tokenId)) return;
 
+    // Animate
+    setAnimatingToken({ color, id: tokenId });
+    soundManager.tokenMove();
     const result = moveToken(gameState, tokenId);
-    setGameState(result);
-    setMovableTokens([]);
+
+    setTimeout(() => {
+      setAnimatingToken(null);
+      setGameState(result);
+      setMovableTokens([]);
+    }, 400);
   }, [gameState, movableTokens]);
 
   // CPU auto-play
@@ -112,17 +160,36 @@ const LudoGame: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center p-4 gap-4"
+      className="min-h-screen flex flex-col items-center justify-center p-4 gap-3"
       style={{ backgroundImage: `url(${woodTable})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      {/* Player Panel */}
-      <PlayerPanel gameState={gameState} />
+      {/* Top bar */}
+      <div className="flex items-center gap-3 w-full max-w-[600px] justify-between">
+        <PlayerPanel gameState={gameState} />
+        <div className="flex gap-2">
+          <button
+            onClick={toggleSound}
+            className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
+            title={soundOn ? 'Mute sounds' : 'Enable sounds'}
+          >
+            {soundOn ? '🔊' : '🔇'}
+          </button>
+          <RulesModal
+            trigger={
+              <button className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
+                📖 Rules
+              </button>
+            }
+          />
+        </div>
+      </div>
 
       {/* Board */}
       <LudoBoard
         gameState={gameState}
         movableTokens={movableTokens}
         onTokenClick={handleTokenClick}
+        animatingToken={animatingToken}
       />
 
       {/* Controls */}
