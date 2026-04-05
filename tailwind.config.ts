@@ -13,6 +13,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        heading: ["Cinzel", "serif"],
+        body: ["Inter", "sans-serif"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -57,6 +61,22 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        ludo: {
+          red: "hsl(var(--ludo-red))",
+          blue: "hsl(var(--ludo-blue))",
+          green: "hsl(var(--ludo-green))",
+          yellow: "hsl(var(--ludo-yellow))",
+        },
+        board: {
+          bg: "hsl(var(--board-bg))",
+          border: "hsl(var(--board-border))",
+          cell: "hsl(var(--board-cell))",
+          wood: "hsl(var(--board-wood))",
+        },
+        dice: {
+          bg: "hsl(var(--dice-bg))",
+          dot: "hsl(var(--dice-dot))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -65,20 +85,12 @@ export default {
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
         },
       },
       animation: {
