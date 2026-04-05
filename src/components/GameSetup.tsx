@@ -43,6 +43,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart }) => {
     onStart(PLAYER_COLORS.map(c => ({ color: c, type: configs[c] })));
   };
 
+  const handleDemo = () => {
+    onStart(PLAYER_COLORS.map(c => ({ color: c, type: 'cpu' as PlayerType })));
+  };
+
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
@@ -85,19 +89,33 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart }) => {
           ))}
         </div>
 
-        <button
-          onClick={handleStart}
-          disabled={activePlayers < 2}
-          className="
-            w-full py-4 rounded-xl font-heading font-bold text-lg
-            bg-primary text-primary-foreground
-            hover:brightness-110 active:scale-[0.98]
-            disabled:opacity-40 disabled:cursor-not-allowed
-            transition-all duration-200
-          "
-        >
-          {activePlayers < 2 ? 'Select at least 2 players' : 'Start Game 🎲'}
-        </button>
+        <div className="space-y-3">
+          <button
+            onClick={handleStart}
+            disabled={activePlayers < 2}
+            className="
+              w-full py-4 rounded-xl font-heading font-bold text-lg
+              bg-primary text-primary-foreground
+              hover:brightness-110 active:scale-[0.98]
+              disabled:opacity-40 disabled:cursor-not-allowed
+              transition-all duration-200
+            "
+          >
+            {activePlayers < 2 ? 'Select at least 2 players' : 'Start Game 🎲'}
+          </button>
+
+          <button
+            onClick={handleDemo}
+            className="
+              w-full py-3 rounded-xl font-heading font-semibold text-sm
+              bg-secondary text-secondary-foreground
+              hover:brightness-110 active:scale-[0.98]
+              transition-all duration-200
+            "
+          >
+            🤖 Watch Demo (4 CPU Players)
+          </button>
+        </div>
       </div>
     </div>
   );

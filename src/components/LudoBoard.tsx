@@ -43,18 +43,26 @@ const HOME_BASES: Record<PlayerColor, [number, number][]> = {
   yellow: [[10, 10], [10, 12], [12, 10], [12, 12]],
 };
 
-const QUADRANT_COLORS: Record<PlayerColor, string> = {
-  red: 'bg-red-500/20',
-  blue: 'bg-blue-500/20',
-  green: 'bg-green-500/20',
-  yellow: 'bg-yellow-400/20',
+// Richer quadrant gradients
+const QUADRANT_STYLES: Record<PlayerColor, React.CSSProperties> = {
+  red: { background: 'linear-gradient(135deg, hsla(0,70%,55%,0.25), hsla(0,60%,45%,0.15))' },
+  blue: { background: 'linear-gradient(135deg, hsla(220,70%,55%,0.25), hsla(220,60%,45%,0.15))' },
+  green: { background: 'linear-gradient(135deg, hsla(140,60%,45%,0.25), hsla(140,50%,35%,0.15))' },
+  yellow: { background: 'linear-gradient(135deg, hsla(45,90%,60%,0.25), hsla(45,80%,50%,0.15))' },
 };
 
-const HOME_COLUMN_COLORS: Record<PlayerColor, string> = {
-  red: 'bg-red-500/30',
-  blue: 'bg-blue-500/30',
-  green: 'bg-green-500/30',
-  yellow: 'bg-yellow-400/30',
+const HOME_COL_STYLES: Record<PlayerColor, React.CSSProperties> = {
+  red: { background: 'linear-gradient(90deg, hsla(0,70%,55%,0.35), hsla(0,60%,50%,0.2))' },
+  blue: { background: 'linear-gradient(180deg, hsla(220,70%,55%,0.35), hsla(220,60%,50%,0.2))' },
+  green: { background: 'linear-gradient(0deg, hsla(140,60%,45%,0.35), hsla(140,50%,40%,0.2))' },
+  yellow: { background: 'linear-gradient(270deg, hsla(45,90%,60%,0.35), hsla(45,80%,50%,0.2))' },
+};
+
+const START_STYLES: Record<PlayerColor, React.CSSProperties> = {
+  red: { background: 'hsla(0,70%,55%,0.4)' },
+  blue: { background: 'hsla(220,70%,55%,0.4)' },
+  green: { background: 'hsla(140,60%,45%,0.4)' },
+  yellow: { background: 'hsla(45,90%,60%,0.4)' },
 };
 
 function getTokensAtPosition(state: GameState, globalPos: number): { token: Token; color: PlayerColor }[] {
@@ -114,8 +122,7 @@ const LudoBoard: React.FC<LudoBoardProps> = ({ gameState, movableTokens, onToken
     if (trackIdx >= 0) {
       const tokensHere = getTokensAtPosition(gameState, trackIdx);
       cellTokens = tokensHere.map(({ token, color }) => ({
-        token,
-        color,
+        token, color,
         isMovable: color === currentPlayer?.color && movableTokens.includes(token.id),
         isAnimating: animatingToken?.color === color && animatingToken?.id === token.id,
       }));
@@ -125,8 +132,7 @@ const LudoBoard: React.FC<LudoBoardProps> = ({ gameState, movableTokens, onToken
       const colIndex = HOME_COLUMNS[homeCol].findIndex(([r, c]) => r === row && c === col);
       const tokens = getTokensInHomeColumn(gameState, homeCol, colIndex);
       cellTokens = tokens.map(t => ({
-        token: t,
-        color: homeCol,
+        token: t, color: homeCol,
         isMovable: homeCol === currentPlayer?.color && movableTokens.includes(t.id),
         isAnimating: animatingToken?.color === homeCol && animatingToken?.id === t.id,
       }));
@@ -141,8 +147,7 @@ const LudoBoard: React.FC<LudoBoardProps> = ({ gameState, movableTokens, onToken
           const homeTokens = player.tokens.filter(t => t.isHome);
           if (homeTokens[0] && baseIdx < homeTokens.length) {
             homeBaseToken = {
-              token: homeTokens[baseIdx],
-              color,
+              token: homeTokens[baseIdx], color,
               isMovable: color === currentPlayer?.color && movableTokens.includes(homeTokens[baseIdx].id),
               isAnimating: animatingToken?.color === color && animatingToken?.id === homeTokens[baseIdx].id,
             };
@@ -151,35 +156,48 @@ const LudoBoard: React.FC<LudoBoardProps> = ({ gameState, movableTokens, onToken
       }
     }
 
-    let bgClass = 'bg-board-cell';
-    let borderClass = '';
+    // Style determination
+    let cellStyle: React.CSSProperties = {};
+    let extraClasses = '';
 
-    if (quadrant && trackIdx < 0 && !homeBaseToken) {
-      bgClass = QUADRANT_COLORS[quadrant];
-    }
-    if (homeCol) bgClass = HOME_COLUMN_COLORS[homeCol];
-    if (trackIdx >= 0 && isSafeCell(trackIdx)) {
-      borderClass = 'ring-1 ring-inset ring-primary/30';
-    }
-    if (trackIdx >= 0 && isStartCell(trackIdx)) {
+    if (center) {
+      cellStyle = {
+        background: `
+          conic-gradient(
+            from 0deg,
+            hsla(0,70%,55%,0.5),
+            hsla(220,70%,55%,0.5),
+            hsla(45,90%,60%,0.5),
+            hsla(140,60%,45%,0.5),
+            hsla(0,70%,55%,0.5)
+          )
+        `,
+      };
+    } else if (homeCol) {
+      cellStyle = HOME_COL_STYLES[homeCol];
+    } else if (trackIdx >= 0 && isStartCell(trackIdx)) {
       const startColor = (Object.entries(PLAYER_START) as [PlayerColor, number][]).find(([_, pos]) => pos === trackIdx)?.[0];
-      if (startColor) bgClass = HOME_COLUMN_COLORS[startColor];
+      if (startColor) cellStyle = START_STYLES[startColor];
+    } else if (trackIdx >= 0) {
+      cellStyle = { background: 'hsl(var(--board-cell))' };
+    } else if (quadrant && !Object.values(HOME_BASES).flat().some(([r, c]) => r === row && c === col)) {
+      cellStyle = QUADRANT_STYLES[quadrant];
+      return (
+        <div key={`${row}-${col}`} className="border border-border/5" style={cellStyle} />
+      );
+    } else {
+      cellStyle = { background: 'hsl(var(--board-cell))' };
     }
-    if (center) bgClass = 'bg-gradient-to-br from-red-400/40 via-yellow-400/40 to-green-400/40';
 
-    if (quadrant && trackIdx < 0 && !Object.values(HOME_BASES).flat().some(([r, c]) => r === row && c === col)) {
-      return <div key={`${row}-${col}`} className={`${QUADRANT_COLORS[quadrant]} border border-border/10`} />;
+    if (trackIdx >= 0 && isSafeCell(trackIdx)) {
+      extraClasses = 'ring-1 ring-inset ring-primary/20';
     }
 
     return (
       <div
         key={`${row}-${col}`}
-        className={`
-          ${bgClass} ${borderClass}
-          border border-border/20 
-          flex items-center justify-center relative
-          transition-colors duration-200
-        `}
+        className={`border border-border/15 flex items-center justify-center relative transition-colors duration-200 ${extraClasses}`}
+        style={cellStyle}
       >
         {homeBaseToken && (
           <div className={homeBaseToken.isAnimating ? 'animate-token-bounce' : ''}>
@@ -196,7 +214,7 @@ const LudoBoard: React.FC<LudoBoardProps> = ({ gameState, movableTokens, onToken
           <div
             key={`${color}-${token.id}`}
             className={`absolute ${isAnimating ? 'animate-token-bounce' : ''}`}
-            style={{ transform: `translate(${i * 4}px, ${i * -4}px)` }}
+            style={{ transform: `translate(${i * 3}px, ${i * -3}px)` }}
           >
             <TokenPiece
               color={color}
@@ -208,18 +226,22 @@ const LudoBoard: React.FC<LudoBoardProps> = ({ gameState, movableTokens, onToken
           </div>
         ))}
         {center && (
-          <div className="w-4 h-4 rounded-sm bg-gradient-to-br from-primary/60 to-accent/60" />
+          <div className="w-5 h-5 rounded-full border-2 border-foreground/20"
+            style={{ background: 'radial-gradient(circle, hsla(36,60%,50%,0.8), hsla(36,60%,40%,0.4))' }}
+          />
         )}
         {trackIdx >= 0 && isSafeCell(trackIdx) && cellTokens.length === 0 && !homeBaseToken && (
-          <div className="w-2 h-2 text-primary/40 text-[8px]">⭐</div>
+          <span className="text-[7px] opacity-40">✦</span>
         )}
       </div>
     );
   };
 
   return (
-    <div className="relative w-full max-w-[min(80vh,560px)] aspect-square mx-auto">
-      <div className="w-full h-full rounded-2xl overflow-hidden board-inset border-4 border-board-border bg-board-bg">
+    <div className="relative w-full max-w-[min(75vh,520px)] aspect-square mx-auto">
+      <div className="w-full h-full rounded-2xl overflow-hidden board-inset border-4 border-board-border"
+        style={{ background: 'linear-gradient(135deg, hsl(40,35%,88%), hsl(40,30%,82%))' }}
+      >
         <div className="w-full h-full grid grid-cols-[repeat(15,1fr)] grid-rows-[repeat(15,1fr)]">
           {Array.from({ length: 15 }, (_, row) =>
             Array.from({ length: 15 }, (_, col) => renderCell(row, col))
