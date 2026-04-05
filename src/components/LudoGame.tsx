@@ -13,15 +13,24 @@ import LudoBoard from '@/components/LudoBoard';
 import Dice from '@/components/Dice';
 import PlayerPanel from '@/components/PlayerPanel';
 import RulesModal from '@/components/RulesModal';
+import TurnHistory, { type LogEntry } from '@/components/TurnHistory';
 import woodTable from '@/assets/wood-table.jpg';
+
+let logIdCounter = 0;
 
 const LudoGame: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [movableTokens, setMovableTokens] = useState<number[]>([]);
   const [soundOn, setSoundOn] = useState(true);
   const [animatingToken, setAnimatingToken] = useState<{ color: PlayerColor; id: number } | null>(null);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(true);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
+
+  const addLog = useCallback((color: PlayerColor, message: string, type: LogEntry['type']) => {
+    setLogEntries(prev => [...prev, { id: ++logIdCounter, color, message, type, timestamp: Date.now() }]);
+  }, []);
 
   const toggleSound = () => {
     const next = !soundOn;
@@ -30,45 +39,60 @@ const LudoGame: React.FC = () => {
   };
 
   const handleStart = (configs: { color: PlayerColor; type: PlayerType }[]) => {
+    logIdCounter = 0;
+    setLogEntries([]);
     setGameState(createInitialState(configs));
   };
 
-  // Detect events from state changes for sound
+  // Detect events from state changes for sound + logging
   useEffect(() => {
     if (!gameState || !prevStateRef.current) {
       prevStateRef.current = gameState;
       return;
     }
     const prev = prevStateRef.current;
+    const player = gameState.players[
+      // For logging, we want to know who just acted. If the player changed, the previous player acted
+      prev.currentPlayerIndex < prev.players.length ? prev.currentPlayerIndex : 0
+    ];
+    const playerColor = player?.color || 'red';
 
-    // Check for win
     if (gameState.phase === 'finished' && prev.phase !== 'finished') {
       soundManager.win();
-    }
-
-    // Check for kills - a token went home that wasn't home before
-    if (gameState.message.includes('💀')) {
+      addLog(gameState.winner || playerColor, `🏆 Wins the game!`, 'goal');
+    } else if (gameState.message.includes('💀')) {
       soundManager.tokenKill();
+      addLog(playerColor, gameState.message.replace(/.*?'s turn\.?/, '').trim() || gameState.message, 'kill');
     } else if (gameState.message.includes('🎉')) {
       soundManager.tokenGoal();
+      addLog(playerColor, 'Reached the goal!', 'goal');
     } else if (gameState.message.includes("can't move")) {
       soundManager.cantMove();
+      addLog(playerColor, `Rolled ${gameState.diceValue} — blocked`, 'skip');
     } else if (gameState.message.includes('moved a token out')) {
       soundManager.tokenOut();
+      addLog(playerColor, 'Token out of home!', 'move');
+    } else if (gameState.message.includes('moved forward')) {
+      addLog(playerColor, `Moved ${prev.diceValue} spaces`, 'move');
+    } else if (gameState.message.includes('home column')) {
+      addLog(playerColor, `Advancing in home column`, 'move');
     }
 
     prevStateRef.current = gameState;
-  }, [gameState]);
+  }, [gameState, addLog]);
 
   const handleRoll = useCallback(() => {
     if (!gameState || gameState.phase !== 'rolling') return;
 
     soundManager.diceRoll();
+    const currentColor = gameState.players[gameState.currentPlayerIndex].color;
     const newState = { ...gameState, isRolling: true };
     setGameState(newState);
 
     setTimeout(() => {
       const dice = rollDice();
+      addLog(currentColor, `Rolled ${dice}`, 'roll');
+
       const stateWithDice: GameState = {
         ...gameState,
         diceValue: dice,
@@ -93,7 +117,6 @@ const LudoGame: React.FC = () => {
         setMovableTokens([]);
       } else if (movable.length === 1) {
         setMovableTokens(movable);
-        // Animate then move
         setAnimatingToken({ color: player.color, id: movable[0] });
         soundManager.tokenMove();
         const result = moveToken(stateWithDice, movable[0]);
@@ -108,7 +131,7 @@ const LudoGame: React.FC = () => {
         setGameState(stateWithDice);
       }
     }, 600);
-  }, [gameState]);
+  }, [gameState, addLog]);
 
   const handleTokenClick = useCallback((color: PlayerColor, tokenId: number) => {
     if (!gameState || gameState.phase !== 'selecting') return;
@@ -116,7 +139,6 @@ const LudoGame: React.FC = () => {
     if (color !== currentPlayer.color) return;
     if (!movableTokens.includes(tokenId)) return;
 
-    // Animate
     setAnimatingToken({ color, id: tokenId });
     soundManager.tokenMove();
     const result = moveToken(gameState, tokenId);
@@ -160,49 +182,59 @@ const LudoGame: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center p-4 gap-3"
+      className="min-h-screen flex items-center justify-center p-4 gap-4"
       style={{ backgroundImage: `url(${woodTable})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      {/* Top bar */}
-      <div className="flex items-center gap-3 w-full max-w-[600px] justify-between">
-        <PlayerPanel gameState={gameState} />
-        <div className="flex gap-2">
-          <button
-            onClick={toggleSound}
-            className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
-            title={soundOn ? 'Mute sounds' : 'Enable sounds'}
-          >
-            {soundOn ? '🔊' : '🔇'}
-          </button>
-          <RulesModal
-            trigger={
-              <button className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
-                📖 Rules
-              </button>
-            }
-          />
+      {/* Main game area */}
+      <div className="flex flex-col items-center gap-3 flex-shrink-0">
+        {/* Top bar */}
+        <div className="flex items-center gap-3 w-full max-w-[520px] justify-between">
+          <PlayerPanel gameState={gameState} />
+          <div className="flex gap-2">
+            <button
+              onClick={toggleSound}
+              className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
+              title={soundOn ? 'Mute sounds' : 'Enable sounds'}
+            >
+              {soundOn ? '🔊' : '🔇'}
+            </button>
+            <button
+              onClick={() => setShowHistory(h => !h)}
+              className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
+              title="Toggle history"
+            >
+              📋
+            </button>
+            <RulesModal
+              trigger={
+                <button className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
+                  📖
+                </button>
+              }
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Board */}
-      <LudoBoard
-        gameState={gameState}
-        movableTokens={movableTokens}
-        onTokenClick={handleTokenClick}
-        animatingToken={animatingToken}
-      />
-
-      {/* Controls */}
-      <div className="flex flex-col items-center gap-3">
-        <Dice
-          value={gameState.diceValue}
-          isRolling={gameState.isRolling}
-          onClick={handleRoll}
-          disabled={!canRoll}
+        {/* Board */}
+        <LudoBoard
+          gameState={gameState}
+          movableTokens={movableTokens}
+          onTokenClick={handleTokenClick}
+          animatingToken={animatingToken}
         />
 
-        <div className="bg-card/90 backdrop-blur-sm rounded-xl px-6 py-3 max-w-md text-center board-inset">
-          <p className="text-foreground text-sm font-medium">{gameState.message}</p>
+        {/* Controls */}
+        <div className="flex items-center gap-4">
+          <Dice
+            value={gameState.diceValue}
+            isRolling={gameState.isRolling}
+            onClick={handleRoll}
+            disabled={!canRoll}
+          />
+
+          <div className="bg-card/90 backdrop-blur-sm rounded-xl px-5 py-3 max-w-xs text-center board-inset">
+            <p className="text-foreground text-sm font-medium">{gameState.message}</p>
+          </div>
         </div>
 
         {gameState.phase === 'finished' && (
@@ -214,6 +246,13 @@ const LudoGame: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* History panel */}
+      {showHistory && (
+        <div className="hidden lg:block flex-shrink-0 animate-slide-in">
+          <TurnHistory entries={logEntries} />
+        </div>
+      )}
     </div>
   );
 };
