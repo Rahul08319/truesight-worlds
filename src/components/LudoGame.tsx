@@ -280,6 +280,15 @@ const LudoGame: React.FC = () => {
           <TurnHistory entries={logEntries} />
         </div>
       )}
+
+      {/* Victory overlay */}
+      {showVictory && gameState.winner && (
+        <VictoryScreen
+          winner={gameState.winner}
+          stats={gameStats}
+          onPlayAgain={() => { setShowVictory(false); setGameState(null); }}
+        />
+      )}
     </div>
   );
 };
