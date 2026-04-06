@@ -110,6 +110,14 @@ const LudoGame: React.FC = () => {
     setTimeout(() => {
       const dice = rollDice();
       addLog(currentColor, `Rolled ${dice}`, 'roll');
+      setGameStats(s => ({
+        ...s, totalRolls: s.totalRolls + 1,
+        perPlayer: { ...s.perPlayer, [currentColor]: {
+          ...s.perPlayer[currentColor],
+          rolls: (s.perPlayer[currentColor]?.rolls ?? 0) + 1,
+          sixes: (s.perPlayer[currentColor]?.sixes ?? 0) + (dice === 6 ? 1 : 0),
+        }},
+      }));
 
       const stateWithDice: GameState = {
         ...gameState,
