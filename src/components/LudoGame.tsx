@@ -15,6 +15,8 @@ import PlayerPanel from '@/components/PlayerPanel';
 import RulesModal from '@/components/RulesModal';
 import TurnHistory, { type LogEntry } from '@/components/TurnHistory';
 import VictoryScreen, { type GameStats } from '@/components/VictoryScreen';
+import MultiplayerLobby from '@/components/MultiplayerLobby';
+import { useMultiplayer } from '@/hooks/useMultiplayer';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
@@ -28,6 +30,8 @@ const LudoGame: React.FC = () => {
   const [showHistory, setShowHistory] = useState(true);
   const [gameStats, setGameStats] = useState<GameStats>({ totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer: {} as any });
   const [showVictory, setShowVictory] = useState(false);
+  const [showMultiplayer, setShowMultiplayer] = useState(false);
+  const multiplayer = useMultiplayer();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
 
@@ -201,8 +205,90 @@ const LudoGame: React.FC = () => {
     };
   }, [gameState, movableTokens, handleRoll, handleTokenClick]);
 
+  // Handle multiplayer game state updates from realtime
+  useEffect(() => {
+    if (multiplayer.room?.gameState && multiplayer.room.status === 'playing') {
+      setGameState(multiplayer.room.gameState);
+    }
+  }, [multiplayer.room?.gameState, multiplayer.room?.status]);
+
+  // Auto-join from URL query param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const joinCode = params.get('join');
+    if (joinCode) {
+      setShowMultiplayer(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const lobbyPlayers = multiplayer.room
+    ? ((multiplayer.room as any).gameState?.players || []).map((p: any) => ({
+        color: p.color, name: p.name, avatar: p.avatar,
+      }))
+    : [];
+
+  // Fetch lobby state from DB when in waiting room
+  const [lobbyData, setLobbyData] = useState<any[]>([]);
+  useEffect(() => {
+    if (!multiplayer.room || multiplayer.room.status !== 'waiting') return;
+    const fetchLobby = async () => {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data } = await supabase
+        .from('game_rooms')
+        .select('game_state')
+        .eq('id', multiplayer.room!.id)
+        .single();
+      if (data?.game_state) {
+        const gs = data.game_state as any;
+        setLobbyData(gs.players || []);
+      }
+    };
+    fetchLobby();
+    const interval = setInterval(fetchLobby, 2000);
+    return () => clearInterval(interval);
+  }, [multiplayer.room?.id, multiplayer.room?.status, multiplayer.room?.playerCount]);
+
+  const handleStartMultiplayerGame = useCallback(async () => {
+    if (!multiplayer.room) return;
+    const { supabase } = await import('@/integrations/supabase/client');
+    const { data } = await supabase
+      .from('game_rooms')
+      .select('game_state')
+      .eq('id', multiplayer.room.id)
+      .single();
+    if (!data?.game_state) return;
+    const lobby = data.game_state as any;
+    const configs = lobby.players.map((p: any) => ({
+      color: p.color as PlayerColor,
+      type: 'human' as PlayerType,
+      name: p.name,
+      avatar: p.avatar,
+    }));
+    const initialState = createInitialState(configs);
+    await multiplayer.startMultiplayerGame(initialState);
+    setGameState(initialState);
+    setGameStats(initStats(configs));
+  }, [multiplayer]);
+
+  if (showMultiplayer && !gameState) {
+    return (
+      <MultiplayerLobby
+        onCreateRoom={multiplayer.createRoom}
+        onJoinRoom={multiplayer.joinRoom}
+        onBack={() => { multiplayer.leaveRoom(); setShowMultiplayer(false); }}
+        loading={multiplayer.loading}
+        error={multiplayer.error}
+        room={multiplayer.room ? { roomCode: multiplayer.room.roomCode, playerCount: multiplayer.room.playerCount, maxPlayers: multiplayer.room.maxPlayers } : null}
+        lobbyPlayers={lobbyData.length > 0 ? lobbyData : lobbyPlayers}
+        isHost={multiplayer.room ? multiplayer.room.hostPlayerId === multiplayer.playerId : false}
+        onStartGame={handleStartMultiplayerGame}
+      />
+    );
+  }
+
   if (!gameState) {
-    return <GameSetup onStart={handleStart} />;
+    return <GameSetup onStart={handleStart} onOnlineClick={() => setShowMultiplayer(true)} />;
   }
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];

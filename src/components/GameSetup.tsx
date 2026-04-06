@@ -12,6 +12,7 @@ interface PlayerConfig {
 
 interface GameSetupProps {
   onStart: (configs: PlayerConfig[]) => void;
+  onOnlineClick?: () => void;
 }
 
 const AVATARS = ['👤', '🦁', '🐯', '🦊', '🐻', '🐼', '🐸', '🐵', '🦅', '🐲', '🎭', '👑', '⚔️', '🛡️', '🧙', '🏰'];
@@ -38,7 +39,7 @@ const defaultAvatars: Record<PlayerColor, string> = {
   red: '🦁', blue: '🐲', yellow: '🦊', green: '🐸',
 };
 
-const GameSetup: React.FC<GameSetupProps> = ({ onStart }) => {
+const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
   const [configs, setConfigs] = useState<Record<PlayerColor, { type: PlayerType; name: string; avatar: string }>>({
     red: { type: 'human', name: '', avatar: defaultAvatars.red },
     blue: { type: 'cpu', name: '', avatar: defaultAvatars.blue },
@@ -199,6 +200,20 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart }) => {
           >
             🤖 Watch Demo (4 CPU Players)
           </button>
+
+          {onOnlineClick && (
+            <button
+              onClick={onOnlineClick}
+              className="
+                w-full py-3 rounded-xl font-heading font-semibold text-sm
+                bg-accent text-accent-foreground
+                hover:brightness-110 active:scale-[0.98]
+                transition-all duration-200
+              "
+            >
+              🌐 Online Multiplayer
+            </button>
+          )}
         </div>
       </div>
     </div>
