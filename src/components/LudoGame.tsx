@@ -281,7 +281,7 @@ const LudoGame: React.FC = () => {
         error={multiplayer.error}
         room={multiplayer.room ? { roomCode: multiplayer.room.roomCode, playerCount: multiplayer.room.playerCount, maxPlayers: multiplayer.room.maxPlayers } : null}
         lobbyPlayers={lobbyData.length > 0 ? lobbyData : lobbyPlayers}
-        isHost={multiplayer.room ? (multiplayer.room as any).hostPlayerId === multiplayer.playerId : false}
+        isHost={multiplayer.room ? multiplayer.room.hostPlayerId === multiplayer.playerId : false}
         onStartGame={handleStartMultiplayerGame}
       />
     );
