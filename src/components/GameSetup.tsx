@@ -3,9 +3,18 @@ import type { PlayerColor, PlayerType } from '@/lib/ludoGame';
 import { PLAYER_COLORS } from '@/lib/ludoGame';
 import woodTable from '@/assets/wood-table.jpg';
 
-interface GameSetupProps {
-  onStart: (configs: { color: PlayerColor; type: PlayerType }[]) => void;
+interface PlayerConfig {
+  color: PlayerColor;
+  type: PlayerType;
+  name: string;
+  avatar: string;
 }
+
+interface GameSetupProps {
+  onStart: (configs: PlayerConfig[]) => void;
+}
+
+const AVATARS = ['👤', '🦁', '🐯', '🦊', '🐻', '🐼', '🐸', '🐵', '🦅', '🐲', '🎭', '👑', '⚔️', '🛡️', '🧙', '🏰'];
 
 const colorLabels: Record<PlayerColor, string> = {
   red: 'Red', blue: 'Blue', yellow: 'Yellow', green: 'Green',
@@ -25,26 +34,51 @@ const colorDot: Record<PlayerColor, string> = {
   green: 'bg-ludo-green',
 };
 
+const defaultAvatars: Record<PlayerColor, string> = {
+  red: '🦁', blue: '🐲', yellow: '🦊', green: '🐸',
+};
+
 const GameSetup: React.FC<GameSetupProps> = ({ onStart }) => {
-  const [configs, setConfigs] = useState<Record<PlayerColor, PlayerType>>({
-    red: 'human',
-    blue: 'cpu',
-    yellow: 'empty',
-    green: 'empty',
+  const [configs, setConfigs] = useState<Record<PlayerColor, { type: PlayerType; name: string; avatar: string }>>({
+    red: { type: 'human', name: '', avatar: defaultAvatars.red },
+    blue: { type: 'cpu', name: '', avatar: defaultAvatars.blue },
+    yellow: { type: 'empty', name: '', avatar: defaultAvatars.yellow },
+    green: { type: 'empty', name: '', avatar: defaultAvatars.green },
   });
 
+  const [editingAvatar, setEditingAvatar] = useState<PlayerColor | null>(null);
+
   const setType = (color: PlayerColor, type: PlayerType) => {
-    setConfigs(prev => ({ ...prev, [color]: type }));
+    setConfigs(prev => ({ ...prev, [color]: { ...prev[color], type } }));
   };
 
-  const activePlayers = Object.values(configs).filter(t => t !== 'empty').length;
+  const setName = (color: PlayerColor, name: string) => {
+    setConfigs(prev => ({ ...prev, [color]: { ...prev[color], name } }));
+  };
+
+  const setAvatar = (color: PlayerColor, avatar: string) => {
+    setConfigs(prev => ({ ...prev, [color]: { ...prev[color], avatar } }));
+    setEditingAvatar(null);
+  };
+
+  const activePlayers = Object.values(configs).filter(t => t.type !== 'empty').length;
 
   const handleStart = () => {
-    onStart(PLAYER_COLORS.map(c => ({ color: c, type: configs[c] })));
+    onStart(PLAYER_COLORS.map(c => ({
+      color: c,
+      type: configs[c].type,
+      name: configs[c].name.trim() || colorLabels[c],
+      avatar: configs[c].avatar,
+    })));
   };
 
   const handleDemo = () => {
-    onStart(PLAYER_COLORS.map(c => ({ color: c, type: 'cpu' as PlayerType })));
+    onStart(PLAYER_COLORS.map(c => ({
+      color: c,
+      type: 'cpu' as PlayerType,
+      name: colorLabels[c],
+      avatar: defaultAvatars[c],
+    })));
   };
 
   return (
@@ -52,41 +86,91 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart }) => {
       className="min-h-screen flex items-center justify-center p-4"
       style={{ backgroundImage: `url(${woodTable})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      <div className="w-full max-w-md bg-card/95 backdrop-blur-sm rounded-2xl p-8 board-inset animate-slide-in">
+      <div className="w-full max-w-lg bg-card/95 backdrop-blur-sm rounded-2xl p-8 board-inset animate-slide-in">
         <h1 className="text-3xl font-heading font-bold text-center mb-2 gold-accent">
           Ludo & Friends
         </h1>
-        <p className="text-center text-muted-foreground mb-8 text-sm">
-          Select players to begin
+        <p className="text-center text-muted-foreground mb-6 text-sm">
+          Customize players and begin
         </p>
 
-        <div className="space-y-4 mb-8">
-          {PLAYER_COLORS.map(color => (
-            <div
-              key={color}
-              className={`flex items-center gap-4 p-3 rounded-xl border-2 ${colorBg[color]} transition-all`}
-            >
-              <div className={`w-4 h-4 rounded-full ${colorDot[color]}`} />
-              <span className="font-semibold text-foreground w-16">{colorLabels[color]}</span>
-              <div className="flex gap-2 ml-auto">
-                {(['human', 'cpu', 'empty'] as PlayerType[]).map(type => (
+        <div className="space-y-3 mb-6">
+          {PLAYER_COLORS.map(color => {
+            const cfg = configs[color];
+            const isActive = cfg.type !== 'empty';
+
+            return (
+              <div key={color} className={`rounded-xl border-2 ${colorBg[color]} transition-all overflow-hidden`}>
+                <div className="flex items-center gap-3 p-3">
+                  {/* Avatar button */}
                   <button
-                    key={type}
-                    onClick={() => setType(color, type)}
-                    className={`
-                      px-3 py-1 rounded-lg text-xs font-medium transition-all
-                      ${configs[color] === type
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-secondary'
-                      }
-                    `}
+                    onClick={() => isActive && setEditingAvatar(editingAvatar === color ? null : color)}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-xl transition-all ${
+                      isActive ? 'bg-card/60 hover:bg-card/80 cursor-pointer' : 'bg-card/30 cursor-default opacity-50'
+                    }`}
+                    disabled={!isActive}
+                    title="Change avatar"
                   >
-                    {type === 'human' ? '👤 Human' : type === 'cpu' ? '🤖 CPU' : '— Empty'}
+                    {cfg.avatar}
                   </button>
-                ))}
+
+                  {/* Name input or color label */}
+                  <div className="flex-1 min-w-0">
+                    {isActive ? (
+                      <input
+                        type="text"
+                        value={cfg.name}
+                        onChange={e => setName(color, e.target.value)}
+                        placeholder={colorLabels[color]}
+                        maxLength={12}
+                        className="w-full bg-transparent border-b border-foreground/20 focus:border-primary outline-none text-foreground font-semibold text-sm py-1 placeholder:text-muted-foreground/50 transition-colors"
+                      />
+                    ) : (
+                      <span className="font-semibold text-foreground/40 text-sm">{colorLabels[color]}</span>
+                    )}
+                  </div>
+
+                  {/* Type buttons */}
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    {(['human', 'cpu', 'empty'] as PlayerType[]).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => setType(color, type)}
+                        className={`
+                          px-2.5 py-1 rounded-lg text-xs font-medium transition-all
+                          ${cfg.type === type
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground hover:bg-secondary'
+                          }
+                        `}
+                      >
+                        {type === 'human' ? '👤' : type === 'cpu' ? '🤖' : '—'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Avatar picker dropdown */}
+                {editingAvatar === color && (
+                  <div className="px-3 pb-3 animate-fade-in">
+                    <div className="flex flex-wrap gap-1.5 bg-card/50 rounded-lg p-2">
+                      {AVATARS.map(av => (
+                        <button
+                          key={av}
+                          onClick={() => setAvatar(color, av)}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-all hover:scale-110 ${
+                            cfg.avatar === av ? 'bg-primary/30 ring-2 ring-primary' : 'hover:bg-card/80'
+                          }`}
+                        >
+                          {av}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="space-y-3">
