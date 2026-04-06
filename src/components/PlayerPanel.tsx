@@ -17,25 +17,22 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({ gameState }) => {
     <div className="flex flex-wrap justify-center gap-3">
       {gameState.players.map((player, idx) => {
         const isCurrent = idx === gameState.currentPlayerIndex && gameState.phase !== 'finished';
-        const tokensHome = player.tokens.filter(t => t.isHome).length;
         const tokensGoal = player.tokens.filter(t => t.isGoal).length;
 
         return (
           <div
             key={player.color}
             className={`
-              flex items-center gap-2 px-4 py-2 rounded-xl border-2 transition-all
+              flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all
               ${isCurrent
                 ? 'border-primary bg-primary/10 scale-105'
                 : 'border-border bg-card/50'
               }
             `}
           >
-            <div className={`w-3 h-3 rounded-full ${colorDot[player.color]}`} />
-            <span className="font-semibold text-sm text-foreground">{player.name}</span>
-            <span className="text-xs text-muted-foreground">
-              {player.type === 'cpu' ? '🤖' : '👤'}
-            </span>
+            <span className="text-lg" title={player.name}>{player.avatar}</span>
+            <span className="font-semibold text-sm text-foreground max-w-[80px] truncate">{player.name}</span>
+            {player.type === 'cpu' && <span className="text-xs text-muted-foreground">🤖</span>}
             <div className="flex gap-0.5 ml-1">
               {player.tokens.map(t => (
                 <div
@@ -46,6 +43,9 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({ gameState }) => {
                 />
               ))}
             </div>
+            {tokensGoal > 0 && (
+              <span className="text-xs text-primary font-bold">{tokensGoal}⭐</span>
+            )}
           </div>
         );
       })}
