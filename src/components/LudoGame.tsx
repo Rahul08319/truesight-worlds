@@ -14,6 +14,7 @@ import Dice from '@/components/Dice';
 import PlayerPanel from '@/components/PlayerPanel';
 import RulesModal from '@/components/RulesModal';
 import TurnHistory, { type LogEntry } from '@/components/TurnHistory';
+import VictoryScreen, { type GameStats } from '@/components/VictoryScreen';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
@@ -25,6 +26,8 @@ const LudoGame: React.FC = () => {
   const [animatingToken, setAnimatingToken] = useState<{ color: PlayerColor; id: number } | null>(null);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [showHistory, setShowHistory] = useState(true);
+  const [gameStats, setGameStats] = useState<GameStats>({ totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer: {} as any });
+  const [showVictory, setShowVictory] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
 
@@ -38,9 +41,19 @@ const LudoGame: React.FC = () => {
     soundManager.setEnabled(next);
   };
 
+  const initStats = (configs: { color: PlayerColor; type: PlayerType }[]): GameStats => {
+    const perPlayer = {} as GameStats['perPlayer'];
+    configs.filter(c => c.type !== 'empty').forEach(c => {
+      perPlayer[c.color] = { rolls: 0, moves: 0, kills: 0, sixes: 0 };
+    });
+    return { totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer };
+  };
+
   const handleStart = (configs: { color: PlayerColor; type: PlayerType }[]) => {
     logIdCounter = 0;
     setLogEntries([]);
+    setGameStats(initStats(configs));
+    setShowVictory(false);
     setGameState(createInitialState(configs));
   };
 
@@ -60,9 +73,14 @@ const LudoGame: React.FC = () => {
     if (gameState.phase === 'finished' && prev.phase !== 'finished') {
       soundManager.win();
       addLog(gameState.winner || playerColor, `🏆 Wins the game!`, 'goal');
+      setShowVictory(true);
     } else if (gameState.message.includes('💀')) {
       soundManager.tokenKill();
       addLog(playerColor, gameState.message.replace(/.*?'s turn\.?/, '').trim() || gameState.message, 'kill');
+      setGameStats(s => ({
+        ...s, totalKills: s.totalKills + 1,
+        perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], kills: (s.perPlayer[playerColor]?.kills ?? 0) + 1 } },
+      }));
     } else if (gameState.message.includes('🎉')) {
       soundManager.tokenGoal();
       addLog(playerColor, 'Reached the goal!', 'goal');
@@ -72,10 +90,13 @@ const LudoGame: React.FC = () => {
     } else if (gameState.message.includes('moved a token out')) {
       soundManager.tokenOut();
       addLog(playerColor, 'Token out of home!', 'move');
+      setGameStats(s => ({ ...s, totalMoves: s.totalMoves + 1, perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], moves: (s.perPlayer[playerColor]?.moves ?? 0) + 1 } } }));
     } else if (gameState.message.includes('moved forward')) {
       addLog(playerColor, `Moved ${prev.diceValue} spaces`, 'move');
+      setGameStats(s => ({ ...s, totalMoves: s.totalMoves + 1, perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], moves: (s.perPlayer[playerColor]?.moves ?? 0) + 1 } } }));
     } else if (gameState.message.includes('home column')) {
       addLog(playerColor, `Advancing in home column`, 'move');
+      setGameStats(s => ({ ...s, totalMoves: s.totalMoves + 1, perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], moves: (s.perPlayer[playerColor]?.moves ?? 0) + 1 } } }));
     }
 
     prevStateRef.current = gameState;
@@ -92,6 +113,14 @@ const LudoGame: React.FC = () => {
     setTimeout(() => {
       const dice = rollDice();
       addLog(currentColor, `Rolled ${dice}`, 'roll');
+      setGameStats(s => ({
+        ...s, totalRolls: s.totalRolls + 1,
+        perPlayer: { ...s.perPlayer, [currentColor]: {
+          ...s.perPlayer[currentColor],
+          rolls: (s.perPlayer[currentColor]?.rolls ?? 0) + 1,
+          sixes: (s.perPlayer[currentColor]?.sixes ?? 0) + (dice === 6 ? 1 : 0),
+        }},
+      }));
 
       const stateWithDice: GameState = {
         ...gameState,
@@ -237,7 +266,7 @@ const LudoGame: React.FC = () => {
           </div>
         </div>
 
-        {gameState.phase === 'finished' && (
+        {gameState.phase === 'finished' && !showVictory && (
           <button
             onClick={() => setGameState(null)}
             className="px-6 py-3 rounded-xl font-heading font-bold bg-primary text-primary-foreground hover:brightness-110 transition-all"
@@ -252,6 +281,15 @@ const LudoGame: React.FC = () => {
         <div className="hidden lg:block flex-shrink-0 animate-slide-in">
           <TurnHistory entries={logEntries} />
         </div>
+      )}
+
+      {/* Victory overlay */}
+      {showVictory && gameState.winner && (
+        <VictoryScreen
+          winner={gameState.winner}
+          stats={gameStats}
+          onPlayAgain={() => { setShowVictory(false); setGameState(null); }}
+        />
       )}
     </div>
   );
