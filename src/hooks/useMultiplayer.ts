@@ -147,6 +147,7 @@ export function useMultiplayer() {
       playerCount: lobbyState.players.length,
       maxPlayers: data.max_players,
       gameState: null,
+      hostPlayerId: data.host_player_id,
     });
 
     setLoading(false);
