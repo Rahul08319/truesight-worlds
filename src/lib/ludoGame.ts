@@ -18,6 +18,7 @@ export interface Player {
   tokens: Token[];
   startPosition: number;
   name: string;
+  avatar: string;
 }
 
 export interface GameState {
@@ -56,13 +57,15 @@ export const SAFE_CELLS = [0, 5, 8, 13, 18, 21, 26, 31, 34, 39, 44, 47];
 
 export const PLAYER_COLORS: PlayerColor[] = ['red', 'blue', 'yellow', 'green'];
 
-export function createInitialState(playerConfigs: { color: PlayerColor; type: PlayerType }[]): GameState {
+export function createInitialState(playerConfigs: { color: PlayerColor; type: PlayerType; name?: string; avatar?: string }[]): GameState {
   const players: Player[] = playerConfigs
     .filter(c => c.type !== 'empty')
     .map(config => ({
       color: config.color,
       type: config.type,
-      name: config.color.charAt(0).toUpperCase() + config.color.slice(1),
+      name: config.name || config.color.charAt(0).toUpperCase() + config.color.slice(1),
+      avatar: config.avatar || '👤',
+      startPosition: PLAYER_START[config.color],
       startPosition: PLAYER_START[config.color],
       tokens: Array.from({ length: 4 }, (_, i) => ({
         id: i,
