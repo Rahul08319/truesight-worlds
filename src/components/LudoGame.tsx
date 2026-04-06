@@ -49,7 +49,7 @@ const LudoGame: React.FC = () => {
     return { totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer };
   };
 
-  const handleStart = (configs: { color: PlayerColor; type: PlayerType }[]) => {
+  const handleStart = (configs: { color: PlayerColor; type: PlayerType; name?: string; avatar?: string }[]) => {
     logIdCounter = 0;
     setLogEntries([]);
     setGameStats(initStats(configs));
