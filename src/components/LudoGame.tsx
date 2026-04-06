@@ -14,6 +14,7 @@ import Dice from '@/components/Dice';
 import PlayerPanel from '@/components/PlayerPanel';
 import RulesModal from '@/components/RulesModal';
 import TurnHistory, { type LogEntry } from '@/components/TurnHistory';
+import VictoryScreen, { type GameStats } from '@/components/VictoryScreen';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
@@ -25,6 +26,8 @@ const LudoGame: React.FC = () => {
   const [animatingToken, setAnimatingToken] = useState<{ color: PlayerColor; id: number } | null>(null);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [showHistory, setShowHistory] = useState(true);
+  const [gameStats, setGameStats] = useState<GameStats>({ totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer: {} as any });
+  const [showVictory, setShowVictory] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
 
