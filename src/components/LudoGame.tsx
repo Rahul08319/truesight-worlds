@@ -41,9 +41,19 @@ const LudoGame: React.FC = () => {
     soundManager.setEnabled(next);
   };
 
+  const initStats = (configs: { color: PlayerColor; type: PlayerType }[]): GameStats => {
+    const perPlayer = {} as GameStats['perPlayer'];
+    configs.filter(c => c.type !== 'empty').forEach(c => {
+      perPlayer[c.color] = { rolls: 0, moves: 0, kills: 0, sixes: 0 };
+    });
+    return { totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer };
+  };
+
   const handleStart = (configs: { color: PlayerColor; type: PlayerType }[]) => {
     logIdCounter = 0;
     setLogEntries([]);
+    setGameStats(initStats(configs));
+    setShowVictory(false);
     setGameState(createInitialState(configs));
   };
 
@@ -63,9 +73,14 @@ const LudoGame: React.FC = () => {
     if (gameState.phase === 'finished' && prev.phase !== 'finished') {
       soundManager.win();
       addLog(gameState.winner || playerColor, `🏆 Wins the game!`, 'goal');
+      setShowVictory(true);
     } else if (gameState.message.includes('💀')) {
       soundManager.tokenKill();
       addLog(playerColor, gameState.message.replace(/.*?'s turn\.?/, '').trim() || gameState.message, 'kill');
+      setGameStats(s => ({
+        ...s, totalKills: s.totalKills + 1,
+        perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], kills: (s.perPlayer[playerColor]?.kills ?? 0) + 1 } },
+      }));
     } else if (gameState.message.includes('🎉')) {
       soundManager.tokenGoal();
       addLog(playerColor, 'Reached the goal!', 'goal');
