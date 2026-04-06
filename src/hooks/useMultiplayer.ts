@@ -23,6 +23,7 @@ export interface MultiplayerRoom {
   playerCount: number;
   maxPlayers: number;
   gameState: GameState | null;
+  hostPlayerId: string;
 }
 
 export function useMultiplayer() {
@@ -76,6 +77,7 @@ export function useMultiplayer() {
       playerCount: data.player_count,
       maxPlayers: data.max_players,
       gameState: null,
+      hostPlayerId: data.host_player_id,
     };
 
     setRoom(newRoom);
