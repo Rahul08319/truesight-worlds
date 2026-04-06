@@ -66,7 +66,6 @@ export function createInitialState(playerConfigs: { color: PlayerColor; type: Pl
       name: config.name || config.color.charAt(0).toUpperCase() + config.color.slice(1),
       avatar: config.avatar || '👤',
       startPosition: PLAYER_START[config.color],
-      startPosition: PLAYER_START[config.color],
       tokens: Array.from({ length: 4 }, (_, i) => ({
         id: i,
         color: config.color,
