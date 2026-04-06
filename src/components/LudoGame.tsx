@@ -93,8 +93,10 @@ const LudoGame: React.FC = () => {
       setGameStats(s => ({ ...s, totalMoves: s.totalMoves + 1, perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], moves: (s.perPlayer[playerColor]?.moves ?? 0) + 1 } } }));
     } else if (gameState.message.includes('moved forward')) {
       addLog(playerColor, `Moved ${prev.diceValue} spaces`, 'move');
+      setGameStats(s => ({ ...s, totalMoves: s.totalMoves + 1, perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], moves: (s.perPlayer[playerColor]?.moves ?? 0) + 1 } } }));
     } else if (gameState.message.includes('home column')) {
       addLog(playerColor, `Advancing in home column`, 'move');
+      setGameStats(s => ({ ...s, totalMoves: s.totalMoves + 1, perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], moves: (s.perPlayer[playerColor]?.moves ?? 0) + 1 } } }));
     }
 
     prevStateRef.current = gameState;
