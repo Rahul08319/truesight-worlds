@@ -15,6 +15,8 @@ import PlayerPanel from '@/components/PlayerPanel';
 import RulesModal from '@/components/RulesModal';
 import TurnHistory, { type LogEntry } from '@/components/TurnHistory';
 import VictoryScreen, { type GameStats } from '@/components/VictoryScreen';
+import MultiplayerLobby from '@/components/MultiplayerLobby';
+import { useMultiplayer } from '@/hooks/useMultiplayer';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
