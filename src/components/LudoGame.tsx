@@ -35,6 +35,7 @@ const LudoGame: React.FC = () => {
   const multiplayer = useMultiplayer();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
+  const animatingRef = useRef(false);
 
   const addLog = useCallback((color: PlayerColor, message: string, type: LogEntry['type']) => {
     setLogEntries(prev => [...prev, { id: ++logIdCounter, color, message, type, timestamp: Date.now() }]);
