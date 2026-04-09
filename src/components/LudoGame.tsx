@@ -6,6 +6,7 @@ import {
   getMovableTokens,
   moveToken,
   cpuSelectToken,
+  toGlobalPosition,
 } from '@/lib/ludoGame';
 import { soundManager } from '@/lib/soundManager';
 import GameSetup from '@/components/GameSetup';
@@ -34,6 +35,7 @@ const LudoGame: React.FC = () => {
   const multiplayer = useMultiplayer();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
+  const animatingRef = useRef(false);
 
   const addLog = useCallback((color: PlayerColor, message: string, type: LogEntry['type']) => {
     setLogEntries(prev => [...prev, { id: ++logIdCounter, color, message, type, timestamp: Date.now() }]);
@@ -106,8 +108,75 @@ const LudoGame: React.FC = () => {
     prevStateRef.current = gameState;
   }, [gameState, addLog]);
 
+  // Animate token step-by-step then apply final state
+  const animateAndMove = useCallback((state: GameState, tokenId: number, onDone: () => void) => {
+    const player = state.players[state.currentPlayerIndex];
+    const token = player.tokens.find(t => t.id === tokenId)!;
+    const dice = state.diceValue!;
+    const color = player.color;
+
+    // Calculate steps
+    const steps: number[] = [];
+    if (token.isHome) {
+      // Moving out: just one step to start position
+      steps.push(0);
+    } else {
+      for (let i = 1; i <= dice; i++) {
+        steps.push(token.position + i);
+      }
+    }
+
+    if (steps.length === 0) {
+      const result = moveToken(state, tokenId);
+      onDone();
+      setGameState(result);
+      return;
+    }
+
+    animatingRef.current = true;
+    setAnimatingToken({ color, id: tokenId });
+
+    let stepIdx = 0;
+    const stepInterval = setInterval(() => {
+      if (stepIdx >= steps.length) {
+        clearInterval(stepInterval);
+        setAnimatingToken(null);
+        animatingRef.current = false;
+        const result = moveToken(state, tokenId);
+        setGameState(result);
+        onDone();
+        return;
+      }
+
+      // Create intermediate visual state
+      setGameState(prev => {
+        if (!prev) return prev;
+        const intermediate = JSON.parse(JSON.stringify(prev)) as GameState;
+        const p = intermediate.players[intermediate.currentPlayerIndex];
+        const t = p.tokens.find(tk => tk.id === tokenId)!;
+        const pos = steps[stepIdx];
+
+        if (t.isHome) {
+          t.isHome = false;
+          t.position = 0;
+          t.globalPosition = toGlobalPosition(0, color);
+        } else if (pos < 52) {
+          t.position = pos;
+          t.globalPosition = toGlobalPosition(pos, color);
+        } else if (pos <= 57) {
+          t.position = pos;
+          t.globalPosition = -1;
+        }
+
+        return intermediate;
+      });
+      soundManager.tokenMove();
+      stepIdx++;
+    }, 120);
+  }, []);
+
   const handleRoll = useCallback(() => {
-    if (!gameState || gameState.phase !== 'rolling') return;
+    if (!gameState || gameState.phase !== 'rolling' || animatingRef.current) return;
 
     soundManager.diceRoll();
     const currentColor = gameState.players[gameState.currentPlayerIndex].color;
@@ -150,38 +219,23 @@ const LudoGame: React.FC = () => {
         setMovableTokens([]);
       } else if (movable.length === 1) {
         setMovableTokens(movable);
-        setAnimatingToken({ color: player.color, id: movable[0] });
-        soundManager.tokenMove();
-        const result = moveToken(stateWithDice, movable[0]);
-        setTimeout(() => {
-          setAnimatingToken(null);
-          setGameState(result);
-          setMovableTokens([]);
-        }, 500);
+        animateAndMove(stateWithDice, movable[0], () => setMovableTokens([]));
       } else {
         setMovableTokens(movable);
         stateWithDice.message = `${player.name} rolled ${dice}. Select a token to move.`;
         setGameState(stateWithDice);
       }
     }, 600);
-  }, [gameState, addLog]);
+  }, [gameState, addLog, animateAndMove]);
 
   const handleTokenClick = useCallback((color: PlayerColor, tokenId: number) => {
-    if (!gameState || gameState.phase !== 'selecting') return;
+    if (!gameState || gameState.phase !== 'selecting' || animatingRef.current) return;
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
     if (color !== currentPlayer.color) return;
     if (!movableTokens.includes(tokenId)) return;
 
-    setAnimatingToken({ color, id: tokenId });
-    soundManager.tokenMove();
-    const result = moveToken(gameState, tokenId);
-
-    setTimeout(() => {
-      setAnimatingToken(null);
-      setGameState(result);
-      setMovableTokens([]);
-    }, 400);
-  }, [gameState, movableTokens]);
+    animateAndMove(gameState, tokenId, () => setMovableTokens([]));
+  }, [gameState, movableTokens, animateAndMove]);
 
   // CPU auto-play
   useEffect(() => {
@@ -375,6 +429,7 @@ const LudoGame: React.FC = () => {
           winner={gameState.winner}
           stats={gameStats}
           onPlayAgain={() => { setShowVictory(false); setGameState(null); }}
+          players={gameState.players.map(p => ({ name: p.name, avatar: p.avatar, color: p.color }))}
         />
       )}
     </div>

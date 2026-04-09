@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { PlayerColor, PlayerType } from '@/lib/ludoGame';
 import { PLAYER_COLORS } from '@/lib/ludoGame';
 import woodTable from '@/assets/wood-table.jpg';
+import Leaderboard from '@/components/Leaderboard';
 
 interface PlayerConfig {
   color: PlayerColor;
@@ -214,6 +215,16 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
               🌐 Online Multiplayer
             </button>
           )}
+        </div>
+
+        <div className="mt-4 flex justify-center">
+          <Leaderboard
+            trigger={
+              <button className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4">
+                🏆 View Leaderboard
+              </button>
+            }
+          />
         </div>
       </div>
     </div>

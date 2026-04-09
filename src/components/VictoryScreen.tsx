@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import type { PlayerColor } from '@/lib/ludoGame';
+import { saveGameResult } from '@/components/Leaderboard';
 
 export interface GameStats {
   totalRolls: number;
@@ -13,6 +14,7 @@ interface VictoryScreenProps {
   winner: PlayerColor;
   stats: GameStats;
   onPlayAgain: () => void;
+  players?: { name: string; avatar: string; color: string }[];
 }
 
 const colorMap: Record<PlayerColor, { bg: string; text: string; confetti: string[] }> = {
@@ -22,13 +24,18 @@ const colorMap: Record<PlayerColor, { bg: string; text: string; confetti: string
   green: { bg: 'from-green-600/90 to-green-900/90', text: 'text-green-200', confetti: ['#22c55e', '#86efac', '#16a34a'] },
 };
 
-const VictoryScreen: React.FC<VictoryScreenProps> = ({ winner, stats, onPlayAgain }) => {
+const VictoryScreen: React.FC<VictoryScreenProps> = ({ winner, stats, onPlayAgain, players }) => {
   const fired = useRef(false);
   const colors = colorMap[winner];
 
   useEffect(() => {
     if (fired.current) return;
     fired.current = true;
+
+    // Save to leaderboard
+    if (players && players.length > 0) {
+      saveGameResult(players, winner, stats.perPlayer as any).catch(() => {});
+    }
 
     const end = Date.now() + 3000;
     const frame = () => {

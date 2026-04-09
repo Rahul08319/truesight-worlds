@@ -50,6 +50,42 @@ export type Database = {
         }
         Relationships: []
       }
+      leaderboard: {
+        Row: {
+          avatar: string | null
+          created_at: string
+          games_played: number
+          id: string
+          kills: number
+          player_name: string
+          total_moves: number
+          updated_at: string
+          wins: number
+        }
+        Insert: {
+          avatar?: string | null
+          created_at?: string
+          games_played?: number
+          id?: string
+          kills?: number
+          player_name: string
+          total_moves?: number
+          updated_at?: string
+          wins?: number
+        }
+        Update: {
+          avatar?: string | null
+          created_at?: string
+          games_played?: number
+          id?: string
+          kills?: number
+          player_name?: string
+          total_moves?: number
+          updated_at?: string
+          wins?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
