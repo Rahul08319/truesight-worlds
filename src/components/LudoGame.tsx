@@ -375,6 +375,7 @@ const LudoGame: React.FC = () => {
           winner={gameState.winner}
           stats={gameStats}
           onPlayAgain={() => { setShowVictory(false); setGameState(null); }}
+          players={gameState.players.map(p => ({ name: p.name, avatar: p.avatar, color: p.color }))}
         />
       )}
     </div>
