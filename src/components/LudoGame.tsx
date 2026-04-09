@@ -6,6 +6,7 @@ import {
   getMovableTokens,
   moveToken,
   cpuSelectToken,
+  toGlobalPosition,
 } from '@/lib/ludoGame';
 import { soundManager } from '@/lib/soundManager';
 import GameSetup from '@/components/GameSetup';
