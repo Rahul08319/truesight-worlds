@@ -18,7 +18,9 @@ import TurnHistory, { type LogEntry } from '@/components/TurnHistory';
 import VictoryScreen, { type GameStats } from '@/components/VictoryScreen';
 import MultiplayerLobby from '@/components/MultiplayerLobby';
 import GameTimer from '@/components/GameTimer';
+import GameChat from '@/components/GameChat';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
+import { useGameChat } from '@/hooks/useGameChat';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
@@ -36,6 +38,14 @@ const LudoGame: React.FC = () => {
   const [undoStack, setUndoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
   const multiplayer = useMultiplayer();
+  const isMultiplayerGame = !!multiplayer.room;
+  const currentPlayerForChat = gameState?.players[gameState.currentPlayerIndex];
+  const chat = useGameChat(
+    isMultiplayerGame ? multiplayer.room!.id : null,
+    currentPlayerForChat?.name || 'Player',
+    currentPlayerForChat?.avatar || '👤',
+    currentPlayerForChat?.color || 'red'
+  );
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
   const animatingRef = useRef(false);
@@ -489,6 +499,11 @@ const LudoGame: React.FC = () => {
           onPlayAgain={() => { setShowVictory(false); setGameState(null); }}
           players={gameState.players.map(p => ({ name: p.name, avatar: p.avatar, color: p.color }))}
         />
+      )}
+
+      {/* Multiplayer chat */}
+      {isMultiplayerGame && gameState && (
+        <GameChat messages={chat.messages} onSend={chat.sendMessage} />
       )}
     </div>
   );
