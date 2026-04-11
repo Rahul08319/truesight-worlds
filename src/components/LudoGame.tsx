@@ -18,7 +18,9 @@ import TurnHistory, { type LogEntry } from '@/components/TurnHistory';
 import VictoryScreen, { type GameStats } from '@/components/VictoryScreen';
 import MultiplayerLobby from '@/components/MultiplayerLobby';
 import GameTimer from '@/components/GameTimer';
+import GameChat from '@/components/GameChat';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
+import { useGameChat } from '@/hooks/useGameChat';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
