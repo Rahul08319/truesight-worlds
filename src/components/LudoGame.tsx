@@ -33,6 +33,8 @@ const LudoGame: React.FC = () => {
   const [gameStats, setGameStats] = useState<GameStats>({ totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer: {} as any });
   const [showVictory, setShowVictory] = useState(false);
   const [showMultiplayer, setShowMultiplayer] = useState(false);
+  const [undoStack, setUndoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
+  const [redoStack, setRedoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
   const multiplayer = useMultiplayer();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
@@ -61,8 +63,41 @@ const LudoGame: React.FC = () => {
     setLogEntries([]);
     setGameStats(initStats(configs));
     setShowVictory(false);
+    setUndoStack([]);
+    setRedoStack([]);
     setGameState(createInitialState(configs));
   };
+
+  // Save snapshot before a human's turn for undo
+  const saveUndoSnapshot = useCallback(() => {
+    if (!gameState) return;
+    setUndoStack(prev => [...prev.slice(-19), { state: JSON.parse(JSON.stringify(gameState)), stats: JSON.parse(JSON.stringify(gameStats)), logs: [...logEntries] }]);
+    setRedoStack([]);
+  }, [gameState, gameStats, logEntries]);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0 || animatingRef.current) return;
+    const snapshot = undoStack[undoStack.length - 1];
+    setRedoStack(prev => [...prev, { state: JSON.parse(JSON.stringify(gameState!)), stats: JSON.parse(JSON.stringify(gameStats)), logs: [...logEntries] }]);
+    setUndoStack(prev => prev.slice(0, -1));
+    setGameState(snapshot.state);
+    setGameStats(snapshot.stats);
+    setLogEntries(snapshot.logs);
+    setMovableTokens([]);
+    prevStateRef.current = snapshot.state;
+  }, [undoStack, gameState, gameStats, logEntries]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0 || animatingRef.current) return;
+    const snapshot = redoStack[redoStack.length - 1];
+    setUndoStack(prev => [...prev, { state: JSON.parse(JSON.stringify(gameState!)), stats: JSON.parse(JSON.stringify(gameStats)), logs: [...logEntries] }]);
+    setRedoStack(prev => prev.slice(0, -1));
+    setGameState(snapshot.state);
+    setGameStats(snapshot.stats);
+    setLogEntries(snapshot.logs);
+    setMovableTokens([]);
+    prevStateRef.current = snapshot.state;
+  }, [redoStack, gameState, gameStats, logEntries]);
 
   // Detect events from state changes for sound + logging
   useEffect(() => {
@@ -178,6 +213,11 @@ const LudoGame: React.FC = () => {
 
   const handleRoll = useCallback(() => {
     if (!gameState || gameState.phase !== 'rolling' || animatingRef.current) return;
+    // Save undo snapshot before human rolls
+    const currentP = gameState.players[gameState.currentPlayerIndex];
+    if (currentP.type === 'human') {
+      saveUndoSnapshot();
+    }
 
     soundManager.diceRoll();
     const currentColor = gameState.players[gameState.currentPlayerIndex].color;
@@ -227,7 +267,7 @@ const LudoGame: React.FC = () => {
         setGameState(stateWithDice);
       }
     }, 600);
-  }, [gameState, addLog, animateAndMove]);
+  }, [gameState, addLog, animateAndMove, saveUndoSnapshot]);
 
   const handleTokenClick = useCallback((color: PlayerColor, tokenId: number) => {
     if (!gameState || gameState.phase !== 'selecting' || animatingRef.current) return;
@@ -361,24 +401,40 @@ const LudoGame: React.FC = () => {
         <div className="flex items-center gap-3 w-full max-w-[520px] justify-between">
           <PlayerPanel gameState={gameState} />
           <GameTimer currentPlayerColor={currentPlayer.color} isFinished={gameState.phase === 'finished'} />
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
+            <button
+              onClick={handleUndo}
+              disabled={undoStack.length === 0 || animatingRef.current}
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Undo last move"
+            >
+              ↩️
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStack.length === 0 || animatingRef.current}
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Redo"
+            >
+              ↪️
+            </button>
             <button
               onClick={toggleSound}
-              className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
               title={soundOn ? 'Mute sounds' : 'Enable sounds'}
             >
               {soundOn ? '🔊' : '🔇'}
             </button>
             <button
               onClick={() => setShowHistory(h => !h)}
-              className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
               title="Toggle history"
             >
               📋
             </button>
             <RulesModal
               trigger={
-                <button className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
+                <button className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
                   📖
                 </button>
               }
