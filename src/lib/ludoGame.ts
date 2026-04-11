@@ -2,6 +2,7 @@
 
 export type PlayerColor = 'red' | 'blue' | 'green' | 'yellow';
 export type PlayerType = 'human' | 'cpu' | 'empty';
+export type CpuDifficulty = 'easy' | 'medium' | 'hard';
 
 export interface Token {
   id: number;
@@ -15,6 +16,7 @@ export interface Token {
 export interface Player {
   color: PlayerColor;
   type: PlayerType;
+  difficulty: CpuDifficulty;
   tokens: Token[];
   startPosition: number;
   name: string;
@@ -57,12 +59,13 @@ export const SAFE_CELLS = [0, 5, 8, 13, 18, 21, 26, 31, 34, 39, 44, 47];
 
 export const PLAYER_COLORS: PlayerColor[] = ['red', 'blue', 'yellow', 'green'];
 
-export function createInitialState(playerConfigs: { color: PlayerColor; type: PlayerType; name?: string; avatar?: string }[]): GameState {
+export function createInitialState(playerConfigs: { color: PlayerColor; type: PlayerType; name?: string; avatar?: string; difficulty?: CpuDifficulty }[]): GameState {
   const players: Player[] = playerConfigs
     .filter(c => c.type !== 'empty')
     .map(config => ({
       color: config.color,
       type: config.type,
+      difficulty: config.difficulty || 'medium',
       name: config.name || config.color.charAt(0).toUpperCase() + config.color.slice(1),
       avatar: config.avatar || '👤',
       startPosition: PLAYER_START[config.color],
@@ -342,51 +345,87 @@ function findWalls(player: Player): number[][] {
     .map(([pos, tokens]) => tokens.map(t => t.id));
 }
 
-// CPU AI: simple strategy
-export function cpuSelectToken(state: GameState): number {
+// CPU AI with difficulty levels
+export function cpuSelectToken(state: GameState, difficulty: CpuDifficulty = 'medium'): number {
   const player = state.players[state.currentPlayerIndex];
   const movable = getMovableTokens(player, state.diceValue!, state);
   if (movable.length === 0) return -1;
 
-  // Priority: kill > advance furthest > leave home
-  let bestId = movable[0];
-  let bestScore = -Infinity;
+  // Easy: random selection
+  if (difficulty === 'easy') {
+    return movable[Math.floor(Math.random() * movable.length)];
+  }
 
-  for (const tid of movable) {
+  // Score each token
+  const scores = movable.map(tid => {
     const token = player.tokens.find(t => t.id === tid)!;
     let score = 0;
 
     if (token.isHome) {
-      score = 10; // Getting out is good
+      score = 10;
     } else {
       const newRelPos = token.position + state.diceValue!;
       if (newRelPos === 57) {
-        score = 100; // Reaching goal is best
+        score = 100;
       } else if (newRelPos >= 52) {
-        score = 50 + newRelPos; // Close to goal
+        score = 50 + newRelPos;
       } else {
-        // Check if can kill
         const newGlobal = toGlobalPosition(newRelPos, player.color);
+        // Kill opportunity
         for (const other of state.players) {
           if (other.color === player.color) continue;
           const targets = other.tokens.filter(t =>
             !t.isHome && !t.isGoal && toGlobalPosition(t.position, other.color) === newGlobal
           );
           if (targets.length === 1 && !SAFE_CELLS.includes(newGlobal)) {
-            score = 80; // Kill opportunity
+            score = 80;
           }
         }
+
+        // Hard: also consider danger avoidance
+        if (difficulty === 'hard' && score < 80) {
+          // Prefer landing on safe cells
+          if (SAFE_CELLS.includes(newGlobal)) {
+            score = Math.max(score, 35 + newRelPos);
+          }
+          // Avoid positions where opponents can kill us next turn
+          let danger = 0;
+          for (const other of state.players) {
+            if (other.color === player.color) continue;
+            for (const ot of other.tokens) {
+              if (ot.isHome || ot.isGoal) continue;
+              const otherGlobal = toGlobalPosition(ot.position, other.color);
+              // Check if opponent is within 6 steps behind us
+              for (let d = 1; d <= 6; d++) {
+                if ((otherGlobal + d) % 52 === newGlobal) {
+                  danger++;
+                }
+              }
+            }
+          }
+          if (danger > 0 && !SAFE_CELLS.includes(newGlobal)) {
+            score -= danger * 15;
+          }
+          // Prefer advancing tokens closer to home column
+          score += Math.floor(newRelPos / 5);
+        }
+
         if (score === 0) {
-          score = newRelPos; // Prefer furthest along
+          score = newRelPos;
         }
       }
     }
 
-    if (score > bestScore) {
-      bestScore = score;
-      bestId = tid;
-    }
-  }
+    return { tid, score };
+  });
 
-  return bestId;
+  // Medium: pick best. Hard: pick best with tiebreaker randomization
+  scores.sort((a, b) => b.score - a.score);
+  if (difficulty === 'hard') {
+    // Among top-scoring tokens (within 5 points), pick randomly
+    const topScore = scores[0].score;
+    const top = scores.filter(s => s.score >= topScore - 5);
+    return top[Math.floor(Math.random() * top.length)].tid;
+  }
+  return scores[0].tid;
 }

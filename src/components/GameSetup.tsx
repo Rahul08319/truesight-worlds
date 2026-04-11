@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { PlayerColor, PlayerType } from '@/lib/ludoGame';
+import type { PlayerColor, PlayerType, CpuDifficulty } from '@/lib/ludoGame';
 import { PLAYER_COLORS } from '@/lib/ludoGame';
 import woodTable from '@/assets/wood-table.jpg';
 import Leaderboard from '@/components/Leaderboard';
@@ -9,6 +9,7 @@ interface PlayerConfig {
   type: PlayerType;
   name: string;
   avatar: string;
+  difficulty: CpuDifficulty;
 }
 
 interface GameSetupProps {
@@ -41,11 +42,11 @@ const defaultAvatars: Record<PlayerColor, string> = {
 };
 
 const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
-  const [configs, setConfigs] = useState<Record<PlayerColor, { type: PlayerType; name: string; avatar: string }>>({
-    red: { type: 'human', name: '', avatar: defaultAvatars.red },
-    blue: { type: 'cpu', name: '', avatar: defaultAvatars.blue },
-    yellow: { type: 'empty', name: '', avatar: defaultAvatars.yellow },
-    green: { type: 'empty', name: '', avatar: defaultAvatars.green },
+  const [configs, setConfigs] = useState<Record<PlayerColor, { type: PlayerType; name: string; avatar: string; difficulty: CpuDifficulty }>>({
+    red: { type: 'human', name: '', avatar: defaultAvatars.red, difficulty: 'medium' },
+    blue: { type: 'cpu', name: '', avatar: defaultAvatars.blue, difficulty: 'medium' },
+    yellow: { type: 'empty', name: '', avatar: defaultAvatars.yellow, difficulty: 'medium' },
+    green: { type: 'empty', name: '', avatar: defaultAvatars.green, difficulty: 'medium' },
   });
 
   const [editingAvatar, setEditingAvatar] = useState<PlayerColor | null>(null);
@@ -71,6 +72,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
       type: configs[c].type,
       name: configs[c].name.trim() || colorLabels[c],
       avatar: configs[c].avatar,
+      difficulty: configs[c].difficulty,
     })));
   };
 
@@ -80,6 +82,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
       type: 'cpu' as PlayerType,
       name: colorLabels[c],
       avatar: defaultAvatars[c],
+      difficulty: 'hard' as CpuDifficulty,
     })));
   };
 
@@ -150,8 +153,28 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
                       </button>
                     ))}
                   </div>
-                </div>
+                  </div>
 
+                  {/* Difficulty selector for CPU */}
+                  {cfg.type === 'cpu' && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      {(['easy', 'medium', 'hard'] as CpuDifficulty[]).map(d => (
+                        <button
+                          key={d}
+                          onClick={() => setConfigs(prev => ({ ...prev, [color]: { ...prev[color], difficulty: d } }))}
+                          className={`
+                            px-1.5 py-0.5 rounded text-[10px] font-medium transition-all
+                            ${cfg.difficulty === d
+                              ? 'bg-accent text-accent-foreground'
+                              : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                            }
+                          `}
+                        >
+                          {d === 'easy' ? '😊' : d === 'medium' ? '🧠' : '💀'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 {/* Avatar picker dropdown */}
                 {editingAvatar === color && (
                   <div className="px-3 pb-3 animate-fade-in">

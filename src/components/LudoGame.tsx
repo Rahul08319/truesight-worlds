@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { PlayerColor, PlayerType, GameState } from '@/lib/ludoGame';
+import type { PlayerColor, PlayerType, GameState, CpuDifficulty } from '@/lib/ludoGame';
 import {
   createInitialState,
   rollDice,
@@ -17,6 +17,7 @@ import RulesModal from '@/components/RulesModal';
 import TurnHistory, { type LogEntry } from '@/components/TurnHistory';
 import VictoryScreen, { type GameStats } from '@/components/VictoryScreen';
 import MultiplayerLobby from '@/components/MultiplayerLobby';
+import GameTimer from '@/components/GameTimer';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
 import woodTable from '@/assets/wood-table.jpg';
 
@@ -55,7 +56,7 @@ const LudoGame: React.FC = () => {
     return { totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer };
   };
 
-  const handleStart = (configs: { color: PlayerColor; type: PlayerType; name?: string; avatar?: string }[]) => {
+  const handleStart = (configs: { color: PlayerColor; type: PlayerType; name?: string; avatar?: string; difficulty?: CpuDifficulty }[]) => {
     logIdCounter = 0;
     setLogEntries([]);
     setGameStats(initStats(configs));
@@ -247,7 +248,7 @@ const LudoGame: React.FC = () => {
       timeoutRef.current = setTimeout(() => handleRoll(), 1000);
     } else if (gameState.phase === 'selecting' && movableTokens.length > 0) {
       timeoutRef.current = setTimeout(() => {
-        const tokenId = cpuSelectToken(gameState);
+        const tokenId = cpuSelectToken(gameState, currentPlayer.difficulty);
         if (tokenId >= 0) {
           handleTokenClick(currentPlayer.color, tokenId);
         }
@@ -359,6 +360,7 @@ const LudoGame: React.FC = () => {
         {/* Top bar */}
         <div className="flex items-center gap-3 w-full max-w-[520px] justify-between">
           <PlayerPanel gameState={gameState} />
+          <GameTimer currentPlayerColor={currentPlayer.color} isFinished={gameState.phase === 'finished'} />
           <div className="flex gap-2">
             <button
               onClick={toggleSound}
