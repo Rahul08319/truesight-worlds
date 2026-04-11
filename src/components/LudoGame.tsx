@@ -33,6 +33,8 @@ const LudoGame: React.FC = () => {
   const [gameStats, setGameStats] = useState<GameStats>({ totalRolls: 0, totalMoves: 0, totalKills: 0, perPlayer: {} as any });
   const [showVictory, setShowVictory] = useState(false);
   const [showMultiplayer, setShowMultiplayer] = useState(false);
+  const [undoStack, setUndoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
+  const [redoStack, setRedoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
   const multiplayer = useMultiplayer();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
