@@ -401,24 +401,40 @@ const LudoGame: React.FC = () => {
         <div className="flex items-center gap-3 w-full max-w-[520px] justify-between">
           <PlayerPanel gameState={gameState} />
           <GameTimer currentPlayerColor={currentPlayer.color} isFinished={gameState.phase === 'finished'} />
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
+            <button
+              onClick={handleUndo}
+              disabled={undoStack.length === 0 || animatingRef.current}
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Undo last move"
+            >
+              ↩️
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStack.length === 0 || animatingRef.current}
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Redo"
+            >
+              ↪️
+            </button>
             <button
               onClick={toggleSound}
-              className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
               title={soundOn ? 'Mute sounds' : 'Enable sounds'}
             >
               {soundOn ? '🔊' : '🔇'}
             </button>
             <button
               onClick={() => setShowHistory(h => !h)}
-              className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
               title="Toggle history"
             >
               📋
             </button>
             <RulesModal
               trigger={
-                <button className="px-3 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
+                <button className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
                   📖
                 </button>
               }
