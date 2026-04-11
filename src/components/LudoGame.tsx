@@ -213,6 +213,11 @@ const LudoGame: React.FC = () => {
 
   const handleRoll = useCallback(() => {
     if (!gameState || gameState.phase !== 'rolling' || animatingRef.current) return;
+    // Save undo snapshot before human rolls
+    const currentP = gameState.players[gameState.currentPlayerIndex];
+    if (currentP.type === 'human') {
+      saveUndoSnapshot();
+    }
 
     soundManager.diceRoll();
     const currentColor = gameState.players[gameState.currentPlayerIndex].color;
