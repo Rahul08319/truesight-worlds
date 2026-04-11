@@ -66,10 +66,6 @@ export function createInitialState(playerConfigs: { color: PlayerColor; type: Pl
       color: config.color,
       type: config.type,
       difficulty: config.difficulty || 'medium',
-    .filter(c => c.type !== 'empty')
-    .map(config => ({
-      color: config.color,
-      type: config.type,
       name: config.name || config.color.charAt(0).toUpperCase() + config.color.slice(1),
       avatar: config.avatar || '👤',
       startPosition: PLAYER_START[config.color],
