@@ -63,8 +63,41 @@ const LudoGame: React.FC = () => {
     setLogEntries([]);
     setGameStats(initStats(configs));
     setShowVictory(false);
+    setUndoStack([]);
+    setRedoStack([]);
     setGameState(createInitialState(configs));
   };
+
+  // Save snapshot before a human's turn for undo
+  const saveUndoSnapshot = useCallback(() => {
+    if (!gameState) return;
+    setUndoStack(prev => [...prev.slice(-19), { state: JSON.parse(JSON.stringify(gameState)), stats: JSON.parse(JSON.stringify(gameStats)), logs: [...logEntries] }]);
+    setRedoStack([]);
+  }, [gameState, gameStats, logEntries]);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0 || animatingRef.current) return;
+    const snapshot = undoStack[undoStack.length - 1];
+    setRedoStack(prev => [...prev, { state: JSON.parse(JSON.stringify(gameState!)), stats: JSON.parse(JSON.stringify(gameStats)), logs: [...logEntries] }]);
+    setUndoStack(prev => prev.slice(0, -1));
+    setGameState(snapshot.state);
+    setGameStats(snapshot.stats);
+    setLogEntries(snapshot.logs);
+    setMovableTokens([]);
+    prevStateRef.current = snapshot.state;
+  }, [undoStack, gameState, gameStats, logEntries]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0 || animatingRef.current) return;
+    const snapshot = redoStack[redoStack.length - 1];
+    setUndoStack(prev => [...prev, { state: JSON.parse(JSON.stringify(gameState!)), stats: JSON.parse(JSON.stringify(gameStats)), logs: [...logEntries] }]);
+    setRedoStack(prev => prev.slice(0, -1));
+    setGameState(snapshot.state);
+    setGameStats(snapshot.stats);
+    setLogEntries(snapshot.logs);
+    setMovableTokens([]);
+    prevStateRef.current = snapshot.state;
+  }, [redoStack, gameState, gameStats, logEntries]);
 
   // Detect events from state changes for sound + logging
   useEffect(() => {
