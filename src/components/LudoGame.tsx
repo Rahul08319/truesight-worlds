@@ -500,6 +500,11 @@ const LudoGame: React.FC = () => {
           players={gameState.players.map(p => ({ name: p.name, avatar: p.avatar, color: p.color }))}
         />
       )}
+
+      {/* Multiplayer chat */}
+      {isMultiplayerGame && gameState && (
+        <GameChat messages={chat.messages} onSend={chat.sendMessage} />
+      )}
     </div>
   );
 };
