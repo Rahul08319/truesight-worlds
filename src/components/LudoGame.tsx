@@ -267,7 +267,7 @@ const LudoGame: React.FC = () => {
         setGameState(stateWithDice);
       }
     }, 600);
-  }, [gameState, addLog, animateAndMove]);
+  }, [gameState, addLog, animateAndMove, saveUndoSnapshot]);
 
   const handleTokenClick = useCallback((color: PlayerColor, tokenId: number) => {
     if (!gameState || gameState.phase !== 'selecting' || animatingRef.current) return;
