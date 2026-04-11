@@ -38,6 +38,14 @@ const LudoGame: React.FC = () => {
   const [undoStack, setUndoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
   const multiplayer = useMultiplayer();
+  const isMultiplayerGame = !!multiplayer.room;
+  const currentPlayerForChat = gameState?.players[gameState.currentPlayerIndex];
+  const chat = useGameChat(
+    isMultiplayerGame ? multiplayer.room!.id : null,
+    currentPlayerForChat?.name || 'Player',
+    currentPlayerForChat?.avatar || '👤',
+    currentPlayerForChat?.color || 'red'
+  );
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
   const animatingRef = useRef(false);
