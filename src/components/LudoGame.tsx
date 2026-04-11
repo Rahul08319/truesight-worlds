@@ -360,6 +360,7 @@ const LudoGame: React.FC = () => {
         {/* Top bar */}
         <div className="flex items-center gap-3 w-full max-w-[520px] justify-between">
           <PlayerPanel gameState={gameState} />
+          <GameTimer currentPlayerColor={currentPlayer.color} isFinished={gameState.phase === 'finished'} />
           <div className="flex gap-2">
             <button
               onClick={toggleSound}
