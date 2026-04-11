@@ -153,8 +153,28 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
                       </button>
                     ))}
                   </div>
-                </div>
+                  </div>
 
+                  {/* Difficulty selector for CPU */}
+                  {cfg.type === 'cpu' && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      {(['easy', 'medium', 'hard'] as CpuDifficulty[]).map(d => (
+                        <button
+                          key={d}
+                          onClick={() => setConfigs(prev => ({ ...prev, [color]: { ...prev[color], difficulty: d } }))}
+                          className={`
+                            px-1.5 py-0.5 rounded text-[10px] font-medium transition-all
+                            ${cfg.difficulty === d
+                              ? 'bg-accent text-accent-foreground'
+                              : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                            }
+                          `}
+                        >
+                          {d === 'easy' ? '😊' : d === 'medium' ? '🧠' : '💀'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 {/* Avatar picker dropdown */}
                 {editingAvatar === color && (
                   <div className="px-3 pb-3 animate-fade-in">
