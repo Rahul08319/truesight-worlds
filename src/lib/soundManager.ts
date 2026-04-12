@@ -111,6 +111,17 @@ class SoundManager {
     setTimeout(() => this.playTone(600, 0.1, 'sine', 0.1), 80);
     setTimeout(() => this.playTone(800, 0.15, 'sine', 0.1), 160);
   }
+
+  chatMessage() {
+    this.playTone(880, 0.06, 'sine', 0.08);
+    setTimeout(() => this.playTone(1100, 0.08, 'sine', 0.06), 50);
+  }
+
+  chatEmoji() {
+    this.playTone(1200, 0.05, 'triangle', 0.1);
+    setTimeout(() => this.playTone(1500, 0.07, 'triangle', 0.08), 40);
+    setTimeout(() => this.playTone(1800, 0.05, 'triangle', 0.06), 80);
+  }
 }
 
 export const soundManager = new SoundManager();
