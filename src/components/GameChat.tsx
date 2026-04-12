@@ -13,9 +13,21 @@ const colorText: Record<string, string> = {
   green: 'text-ludo-green',
 };
 
+const QUICK_MESSAGES = [
+  '👍 Good move!',
+  '🔪 Nice kill!',
+  '🎲 Lucky roll!',
+  '😤 Come on!',
+  '😂 LOL',
+  '🏆 GG!',
+];
+
+const EMOJI_REACTIONS = ['👍', '😂', '🔥', '😮', '😢', '👏'];
+
 const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [showQuick, setShowQuick] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const unreadRef = useRef(0);
   const [unread, setUnread] = useState(0);
@@ -73,6 +85,40 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
             <span className="text-foreground">{msg.text}</span>
           </div>
         ))}
+      </div>
+
+      {/* Quick messages */}
+      {showQuick && (
+        <div className="px-2 py-1.5 border-t border-border flex flex-wrap gap-1">
+          {QUICK_MESSAGES.map(q => (
+            <button
+              key={q}
+              onClick={() => { onSend(q); setShowQuick(false); }}
+              className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-foreground hover:bg-accent transition-colors"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Emoji bar */}
+      <div className="flex items-center gap-0.5 px-2 py-1 border-t border-border">
+        {EMOJI_REACTIONS.map(e => (
+          <button
+            key={e}
+            onClick={() => onSend(e)}
+            className="text-sm hover:scale-125 transition-transform"
+          >
+            {e}
+          </button>
+        ))}
+        <button
+          onClick={() => setShowQuick(v => !v)}
+          className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showQuick ? '▼' : '▲'} Quick
+        </button>
       </div>
 
       <div className="flex gap-1.5 p-2 border-t border-border">
