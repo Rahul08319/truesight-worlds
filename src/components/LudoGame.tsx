@@ -144,7 +144,7 @@ const LudoGame: React.FC = () => {
       addLog(playerColor, 'Token out of home!', 'move');
       setGameStats(s => ({ ...s, totalMoves: s.totalMoves + 1, perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], moves: (s.perPlayer[playerColor]?.moves ?? 0) + 1 } } }));
     } else if (gameState.message.includes('moved forward')) {
-      addLog(playerColor, `Moved ${prev.diceValue} spaces`, 'move');
+      addLog(playerColor, `Moved ${gameState.diceValue ?? prev.diceValue ?? '?'} spaces`, 'move');
       setGameStats(s => ({ ...s, totalMoves: s.totalMoves + 1, perPlayer: { ...s.perPlayer, [playerColor]: { ...s.perPlayer[playerColor], moves: (s.perPlayer[playerColor]?.moves ?? 0) + 1 } } }));
     } else if (gameState.message.includes('home column')) {
       addLog(playerColor, `Advancing in home column`, 'move');
