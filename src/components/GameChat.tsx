@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMessage } from '@/hooks/useGameChat';
+import { soundManager } from '@/lib/soundManager';
 
 interface GameChatProps {
   messages: ChatMessage[];
