@@ -46,6 +46,7 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
 
   const handleSend = () => {
     if (!input.trim()) return;
+    soundManager.chatMessage();
     onSend(input);
     setInput('');
   };
