@@ -39,6 +39,7 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
       unreadRef.current = 0;
       setUnread(0);
     } else if (messages.length > 0) {
+      soundManager.chatMessage();
       unreadRef.current++;
       setUnread(unreadRef.current);
     }
