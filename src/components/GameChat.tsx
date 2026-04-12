@@ -95,7 +95,7 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
           {QUICK_MESSAGES.map(q => (
             <button
               key={q}
-              onClick={() => { onSend(q); setShowQuick(false); }}
+              onClick={() => { soundManager.chatMessage(); onSend(q); setShowQuick(false); }}
               className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-foreground hover:bg-accent transition-colors"
             >
               {q}
@@ -109,7 +109,7 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
         {EMOJI_REACTIONS.map(e => (
           <button
             key={e}
-            onClick={() => onSend(e)}
+            onClick={() => { soundManager.chatEmoji(); onSend(e); }}
             className="text-sm hover:scale-125 transition-transform"
           >
             {e}
