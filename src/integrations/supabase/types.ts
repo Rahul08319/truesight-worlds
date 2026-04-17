@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_messages: {
+        Row: {
+          created_at: string
+          id: string
+          player_avatar: string
+          player_color: string
+          player_name: string
+          room_id: string
+          text: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          player_avatar?: string
+          player_color?: string
+          player_name: string
+          room_id: string
+          text: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          player_avatar?: string
+          player_color?: string
+          player_name?: string
+          room_id?: string
+          text?: string
+        }
+        Relationships: []
+      }
       game_rooms: {
         Row: {
           created_at: string
