@@ -31,10 +31,19 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
-  const [muted, setMuted] = useState(!soundManager.isEnabled());
+  const [showSettings, setShowSettings] = useState(false);
+  const [gameVol, setGameVol] = useState(soundManager.getVolume('game'));
+  const [chatVol, setChatVol] = useState(soundManager.getVolume('chat'));
   const scrollRef = useRef<HTMLDivElement>(null);
   const unreadRef = useRef(0);
   const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    return soundManager.subscribe(() => {
+      setGameVol(soundManager.getVolume('game'));
+      setChatVol(soundManager.getVolume('chat'));
+    });
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -66,12 +75,6 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
     if (e.target.value.trim()) onTyping?.();
   };
 
-  const toggleMute = () => {
-    const next = !muted;
-    setMuted(next);
-    soundManager.setEnabled(!next);
-  };
-
   if (!isOpen) {
     return (
       <button
@@ -95,22 +98,55 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
     return `${typingUsers.length} players are typing`;
   })();
 
+  const soundIcon = gameVol === 0 && chatVol === 0 ? '🔇' : '🔊';
+
   return (
     <div className="fixed bottom-4 right-4 z-50 w-72 bg-card/95 backdrop-blur-sm rounded-xl border border-border shadow-xl flex flex-col animate-slide-in">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="font-heading font-semibold text-sm text-foreground">💬 Game Chat</span>
         <div className="flex items-center gap-1">
           <button
-            onClick={toggleMute}
-            title={muted ? 'Unmute sound effects' : 'Mute sound effects'}
-            aria-label={muted ? 'Unmute sound effects' : 'Mute sound effects'}
+            onClick={() => setShowSettings(v => !v)}
+            title="Sound settings"
+            aria-label="Sound settings"
             className="text-muted-foreground hover:text-foreground text-base px-1"
           >
-            {muted ? '🔇' : '🔊'}
+            {soundIcon}
           </button>
           <button onClick={() => setIsOpen(false)} className="text-muted-foreground hover:text-foreground text-lg px-1">✕</button>
         </div>
       </div>
+
+      {showSettings && (
+        <div className="px-3 py-2 border-b border-border space-y-2 bg-muted/30">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground w-14">🎲 Game</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(gameVol * 100)}
+              onChange={e => soundManager.setVolume('game', Number(e.target.value) / 100)}
+              className="flex-1 accent-primary"
+              aria-label="Game sound volume"
+            />
+            <span className="text-[10px] text-muted-foreground w-7 text-right">{Math.round(gameVol * 100)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground w-14">💬 Chat</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(chatVol * 100)}
+              onChange={e => soundManager.setVolume('chat', Number(e.target.value) / 100)}
+              className="flex-1 accent-primary"
+              aria-label="Chat sound volume"
+            />
+            <span className="text-[10px] text-muted-foreground w-7 text-right">{Math.round(chatVol * 100)}</span>
+          </div>
+        </div>
+      )}
 
       <div ref={scrollRef} className="flex-1 max-h-56 overflow-y-auto px-3 py-2 space-y-1.5">
         {messages.length === 0 && typingUsers.length === 0 && (
@@ -137,7 +173,6 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
         )}
       </div>
 
-      {/* Quick messages */}
       {showQuick && (
         <div className="px-2 py-1.5 border-t border-border flex flex-wrap gap-1">
           {QUICK_MESSAGES.map(q => (
@@ -152,7 +187,6 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
         </div>
       )}
 
-      {/* Emoji bar */}
       <div className="flex items-center gap-0.5 px-2 py-1 border-t border-border">
         {EMOJI_REACTIONS.map(e => (
           <button
