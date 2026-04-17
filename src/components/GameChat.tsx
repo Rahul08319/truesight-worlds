@@ -7,6 +7,8 @@ interface GameChatProps {
   onSend: (text: string) => void;
   typingUsers?: TypingUser[];
   onTyping?: () => void;
+  isHost?: boolean;
+  onClearChat?: () => void;
 }
 
 const colorText: Record<string, string> = {
@@ -27,13 +29,69 @@ const QUICK_MESSAGES = [
 
 const EMOJI_REACTIONS = ['👍', '😂', '🔥', '😮', '😢', '👏'];
 
-const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [], onTyping }) => {
+const GROUP_WINDOW_MS = 60_000; // group messages within 1 min from same sender
+
+function formatRelative(ts: number, now: number): string {
+  const diff = Math.max(0, now - ts);
+  const sec = Math.floor(diff / 1000);
+  if (sec < 10) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+interface MessageGroup {
+  key: string;
+  playerName: string;
+  playerAvatar: string;
+  playerColor: string;
+  firstTimestamp: number;
+  lastTimestamp: number;
+  items: ChatMessage[];
+}
+
+function groupMessages(messages: ChatMessage[]): MessageGroup[] {
+  const groups: MessageGroup[] = [];
+  for (const m of messages) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      last.playerName === m.playerName &&
+      last.playerColor === m.playerColor &&
+      m.timestamp - last.lastTimestamp <= GROUP_WINDOW_MS
+    ) {
+      last.items.push(m);
+      last.lastTimestamp = m.timestamp;
+    } else {
+      groups.push({
+        key: m.id,
+        playerName: m.playerName,
+        playerAvatar: m.playerAvatar,
+        playerColor: m.playerColor,
+        firstTimestamp: m.timestamp,
+        lastTimestamp: m.timestamp,
+        items: [m],
+      });
+    }
+  }
+  return groups;
+}
+
+const GameChat: React.FC<GameChatProps> = ({
+  messages, onSend, typingUsers = [], onTyping, isHost, onClearChat,
+}) => {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [gameVol, setGameVol] = useState(soundManager.getVolume('game'));
   const [chatVol, setChatVol] = useState(soundManager.getVolume('chat'));
+  const [now, setNow] = useState(Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
   const unreadRef = useRef(0);
   const [unread, setUnread] = useState(0);
@@ -44,6 +102,13 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
       setChatVol(soundManager.getVolume('chat'));
     });
   }, []);
+
+  // Tick relative timestamps every 30s while open
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -75,6 +140,17 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
     if (e.target.value.trim()) onTyping?.();
   };
 
+  const handleClear = () => {
+    if (!onClearChat) return;
+    if (!confirmClear) {
+      setConfirmClear(true);
+      setTimeout(() => setConfirmClear(false), 3000);
+      return;
+    }
+    onClearChat();
+    setConfirmClear(false);
+  };
+
   if (!isOpen) {
     return (
       <button
@@ -99,12 +175,25 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
   })();
 
   const soundIcon = gameVol === 0 && chatVol === 0 ? '🔇' : '🔊';
+  const groups = groupMessages(messages);
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-72 bg-card/95 backdrop-blur-sm rounded-xl border border-border shadow-xl flex flex-col animate-slide-in">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="font-heading font-semibold text-sm text-foreground">💬 Game Chat</span>
         <div className="flex items-center gap-1">
+          {isHost && onClearChat && messages.length > 0 && (
+            <button
+              onClick={handleClear}
+              title={confirmClear ? 'Click again to confirm' : 'Clear chat history'}
+              aria-label="Clear chat history"
+              className={`text-base px-1 transition-colors ${
+                confirmClear ? 'text-destructive' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {confirmClear ? '⚠️' : '🗑️'}
+            </button>
+          )}
           <button
             onClick={() => setShowSettings(v => !v)}
             title="Sound settings"
@@ -148,19 +237,29 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [],
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 max-h-56 overflow-y-auto px-3 py-2 space-y-1.5">
+      <div ref={scrollRef} className="flex-1 max-h-56 overflow-y-auto px-3 py-2 space-y-2">
         {messages.length === 0 && typingUsers.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-4">No messages yet</p>
         )}
-        {messages.map(msg => (
-          <div key={msg.id} className="text-xs">
-            <span className="mr-1">{msg.playerAvatar}</span>
-            <span className={`font-semibold ${colorText[msg.playerColor] || 'text-foreground'}`}>
-              {msg.playerName}:
-            </span>{' '}
-            <span className="text-foreground">{msg.text}</span>
-          </div>
-        ))}
+        {groups.map(g => {
+          const colorClass = colorText[g.playerColor] || 'text-foreground';
+          return (
+            <div key={g.key} className="text-xs">
+              <div className="flex items-baseline gap-1.5">
+                <span>{g.playerAvatar}</span>
+                <span className={`font-semibold ${colorClass}`}>{g.playerName}</span>
+                <span className="text-[10px] text-muted-foreground ml-auto">
+                  {formatRelative(g.lastTimestamp, now)}
+                </span>
+              </div>
+              <div className="pl-6 space-y-0.5">
+                {g.items.map(m => (
+                  <div key={m.id} className="text-foreground break-words">{m.text}</div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
         {typingLabel && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground italic pt-0.5">
             <span className={colorText[typingUsers[0].playerColor] || 'text-foreground'}>{typingLabel}</span>
