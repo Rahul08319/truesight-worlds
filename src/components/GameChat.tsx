@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import type { ChatMessage } from '@/hooks/useGameChat';
+import type { ChatMessage, TypingUser } from '@/hooks/useGameChat';
 import { soundManager } from '@/lib/soundManager';
 
 interface GameChatProps {
   messages: ChatMessage[];
   onSend: (text: string) => void;
+  typingUsers?: TypingUser[];
+  onTyping?: () => void;
 }
 
 const colorText: Record<string, string> = {
@@ -25,10 +27,11 @@ const QUICK_MESSAGES = [
 
 const EMOJI_REACTIONS = ['👍', '😂', '🔥', '😮', '😢', '👏'];
 
-const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
+const GameChat: React.FC<GameChatProps> = ({ messages, onSend, typingUsers = [], onTyping }) => {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
+  const [muted, setMuted] = useState(!soundManager.isEnabled());
   const scrollRef = useRef<HTMLDivElement>(null);
   const unreadRef = useRef(0);
   const [unread, setUnread] = useState(0);
@@ -45,11 +48,28 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
     }
   }, [messages, isOpen]);
 
+  useEffect(() => {
+    if (isOpen && typingUsers.length > 0) {
+      scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
+    }
+  }, [typingUsers, isOpen]);
+
   const handleSend = () => {
     if (!input.trim()) return;
     soundManager.chatMessage();
     onSend(input);
     setInput('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+    if (e.target.value.trim()) onTyping?.();
+  };
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    soundManager.setEnabled(!next);
   };
 
   if (!isOpen) {
@@ -68,15 +88,32 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
     );
   }
 
+  const typingLabel = (() => {
+    if (typingUsers.length === 0) return null;
+    if (typingUsers.length === 1) return `${typingUsers[0].playerName} is typing`;
+    if (typingUsers.length === 2) return `${typingUsers[0].playerName} and ${typingUsers[1].playerName} are typing`;
+    return `${typingUsers.length} players are typing`;
+  })();
+
   return (
     <div className="fixed bottom-4 right-4 z-50 w-72 bg-card/95 backdrop-blur-sm rounded-xl border border-border shadow-xl flex flex-col animate-slide-in">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="font-heading font-semibold text-sm text-foreground">💬 Game Chat</span>
-        <button onClick={() => setIsOpen(false)} className="text-muted-foreground hover:text-foreground text-lg">✕</button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleMute}
+            title={muted ? 'Unmute sound effects' : 'Mute sound effects'}
+            aria-label={muted ? 'Unmute sound effects' : 'Mute sound effects'}
+            className="text-muted-foreground hover:text-foreground text-base px-1"
+          >
+            {muted ? '🔇' : '🔊'}
+          </button>
+          <button onClick={() => setIsOpen(false)} className="text-muted-foreground hover:text-foreground text-lg px-1">✕</button>
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 max-h-56 overflow-y-auto px-3 py-2 space-y-1.5">
-        {messages.length === 0 && (
+        {messages.length === 0 && typingUsers.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-4">No messages yet</p>
         )}
         {messages.map(msg => (
@@ -88,6 +125,16 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
             <span className="text-foreground">{msg.text}</span>
           </div>
         ))}
+        {typingLabel && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground italic pt-0.5">
+            <span className={colorText[typingUsers[0].playerColor] || 'text-foreground'}>{typingLabel}</span>
+            <span className="flex gap-0.5">
+              <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Quick messages */}
@@ -128,7 +175,7 @@ const GameChat: React.FC<GameChatProps> = ({ messages, onSend }) => {
         <input
           type="text"
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={handleInputChange}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder="Type a message..."
           maxLength={200}
