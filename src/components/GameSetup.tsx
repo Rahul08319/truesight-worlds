@@ -240,6 +240,8 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
           )}
         </div>
 
+        <MasterVolumeSlider />
+
         <div className="mt-4 flex justify-center">
           <Leaderboard
             trigger={
@@ -250,6 +252,44 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStart, onOnlineClick }) => {
           />
         </div>
       </div>
+    </div>
+  );
+};
+
+const MasterVolumeSlider: React.FC = () => {
+  const [gameVol, setGameVol] = useState(soundManager.getVolume('game'));
+  const [chatVol, setChatVol] = useState(soundManager.getVolume('chat'));
+
+  useEffect(() => {
+    return soundManager.subscribe(() => {
+      setGameVol(soundManager.getVolume('game'));
+      setChatVol(soundManager.getVolume('chat'));
+    });
+  }, []);
+
+  const master = Math.round(((gameVol + chatVol) / 2) * 100);
+  const muted = gameVol === 0 && chatVol === 0;
+
+  const setMaster = (v: number) => {
+    const n = v / 100;
+    soundManager.setVolume('game', n);
+    soundManager.setVolume('chat', n);
+  };
+
+  return (
+    <div className="mt-4 flex items-center gap-2 px-1">
+      <span className="text-base" aria-hidden>{muted ? '🔇' : '🔊'}</span>
+      <span className="text-xs text-muted-foreground w-16">Master volume</span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={master}
+        onChange={e => setMaster(Number(e.target.value))}
+        className="flex-1 accent-primary"
+        aria-label="Master sound volume"
+      />
+      <span className="text-[10px] text-muted-foreground w-7 text-right">{master}</span>
     </div>
   );
 };
