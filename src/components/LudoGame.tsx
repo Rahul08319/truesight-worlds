@@ -509,6 +509,8 @@ const LudoGame: React.FC = () => {
           onSend={chat.sendMessage}
           typingUsers={chat.typingUsers}
           onTyping={chat.sendTyping}
+          isHost={multiplayer.room!.hostPlayerId === multiplayer.playerId}
+          onClearChat={chat.clearHistory}
         />
       )}
     </div>
