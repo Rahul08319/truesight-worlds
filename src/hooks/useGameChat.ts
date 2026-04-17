@@ -92,6 +92,10 @@ export function useGameChat(roomId: string | null, playerName: string, playerAva
         }, TYPING_TIMEOUT);
         typingTimersRef.current.set(t.id, timer);
       })
+      .on('broadcast', { event: 'cleared' }, () => {
+        seenIdsRef.current = new Set();
+        setMessages([]);
+      })
       .subscribe();
 
     channelRef.current = channel;
@@ -148,5 +152,17 @@ export function useGameChat(roomId: string | null, playerName: string, playerAva
     channelRef.current.send({ type: 'broadcast', event: 'typing', payload });
   }, [playerName, playerColor]);
 
-  return { messages, sendMessage, typingUsers, sendTyping };
+  const clearHistory = useCallback(async () => {
+    if (!roomId || !channelRef.current) return;
+    const { error } = await supabase.from('chat_messages').delete().eq('room_id', roomId);
+    if (error) {
+      console.error('Clear chat failed:', error);
+      return;
+    }
+    seenIdsRef.current = new Set();
+    setMessages([]);
+    channelRef.current.send({ type: 'broadcast', event: 'cleared', payload: {} });
+  }, [roomId]);
+
+  return { messages, sendMessage, typingUsers, sendTyping, clearHistory };
 }

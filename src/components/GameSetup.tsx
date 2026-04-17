@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PlayerColor, PlayerType, CpuDifficulty } from '@/lib/ludoGame';
 import { PLAYER_COLORS } from '@/lib/ludoGame';
+import { soundManager } from '@/lib/soundManager';
 import woodTable from '@/assets/wood-table.jpg';
 import Leaderboard from '@/components/Leaderboard';
 
