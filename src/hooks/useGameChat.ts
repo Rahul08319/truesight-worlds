@@ -25,6 +25,7 @@ export interface TypingUser {
 
 const TYPING_TIMEOUT = 3000;
 const TYPING_THROTTLE = 1500;
+const HISTORY_LIMIT = 100;
 
 export function useGameChat(roomId: string | null, playerName: string, playerAvatar: string, playerColor: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -33,26 +34,56 @@ export function useGameChat(roomId: string | null, playerName: string, playerAva
   const selfIdRef = useRef<string>(crypto.randomUUID());
   const lastTypingSentRef = useRef(0);
   const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const seenIdsRef = useRef<Set<string>>(new Set());
 
+  const addMessage = useCallback((msg: ChatMessage) => {
+    if (seenIdsRef.current.has(msg.id)) return;
+    seenIdsRef.current.add(msg.id);
+    setMessages(prev => [...prev, msg].slice(-HISTORY_LIMIT));
+  }, []);
+
+  // Load history + subscribe
   useEffect(() => {
     if (!roomId) return;
+    let cancelled = false;
+
+    seenIdsRef.current = new Set();
+    setMessages([]);
+
+    // Load persisted history
+    supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true })
+      .limit(HISTORY_LIMIT)
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const loaded: ChatMessage[] = data.map((r: any) => ({
+          id: r.id,
+          playerName: r.player_name,
+          playerAvatar: r.player_avatar,
+          playerColor: r.player_color,
+          text: r.text,
+          timestamp: new Date(r.created_at).getTime(),
+        }));
+        loaded.forEach(m => seenIdsRef.current.add(m.id));
+        setMessages(loaded);
+      });
 
     const channel = supabase.channel(`chat-${roomId}`)
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
         const msg = payload as ChatMessage;
-        setMessages(prev => [...prev.slice(-99), msg]);
-        // Clear typing indicator for this sender
+        addMessage(msg);
         setTypingUsers(prev => prev.filter(u => u.playerName !== msg.playerName));
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         const t = payload as TypingPayload;
         if (t.id === selfIdRef.current) return;
         setTypingUsers(prev => {
-          const existing = prev.find(u => u.id === t.id);
-          if (existing) return prev;
+          if (prev.find(u => u.id === t.id)) return prev;
           return [...prev, { id: t.id, playerName: t.playerName, playerColor: t.playerColor }];
         });
-        // Reset removal timer
         const existingTimer = typingTimersRef.current.get(t.id);
         if (existingTimer) clearTimeout(existingTimer);
         const timer = setTimeout(() => {
@@ -66,27 +97,42 @@ export function useGameChat(roomId: string | null, playerName: string, playerAva
     channelRef.current = channel;
 
     return () => {
+      cancelled = true;
       supabase.removeChannel(channel);
       channelRef.current = null;
       typingTimersRef.current.forEach(t => clearTimeout(t));
       typingTimersRef.current.clear();
       setTypingUsers([]);
     };
-  }, [roomId]);
+  }, [roomId, addMessage]);
 
   const sendMessage = useCallback((text: string) => {
-    if (!channelRef.current || !text.trim()) return;
+    if (!channelRef.current || !roomId || !text.trim()) return;
+    const trimmed = text.trim().slice(0, 200);
+    const id = crypto.randomUUID();
     const msg: ChatMessage = {
-      id: crypto.randomUUID(),
+      id,
       playerName,
       playerAvatar,
       playerColor,
-      text: text.trim().slice(0, 200),
+      text: trimmed,
       timestamp: Date.now(),
     };
+    // Optimistic local + broadcast
+    addMessage(msg);
     channelRef.current.send({ type: 'broadcast', event: 'chat', payload: msg });
-    setMessages(prev => [...prev.slice(-99), msg]);
-  }, [playerName, playerAvatar, playerColor]);
+    // Persist (fire-and-forget)
+    supabase.from('chat_messages').insert({
+      id,
+      room_id: roomId,
+      player_name: playerName,
+      player_avatar: playerAvatar,
+      player_color: playerColor,
+      text: trimmed,
+    }).then(({ error }) => {
+      if (error) console.error('Chat persist failed:', error);
+    });
+  }, [playerName, playerAvatar, playerColor, roomId, addMessage]);
 
   const sendTyping = useCallback(() => {
     if (!channelRef.current) return;
