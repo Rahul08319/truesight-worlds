@@ -504,7 +504,12 @@ const LudoGame: React.FC = () => {
 
       {/* Multiplayer chat */}
       {isMultiplayerGame && gameState && (
-        <GameChat messages={chat.messages} onSend={chat.sendMessage} />
+        <GameChat
+          messages={chat.messages}
+          onSend={chat.sendMessage}
+          typingUsers={chat.typingUsers}
+          onTyping={chat.sendTyping}
+        />
       )}
     </div>
   );
