@@ -174,6 +174,13 @@ class SoundManager {
     setTimeout(() => this.playTone('chat', 1500, 0.05, 'triangle', 0.03), 40);
     setTimeout(() => this.playTone('chat', 1800, 0.04, 'triangle', 0.025), 80);
   }
+
+  chatMention() {
+    // Distinct two-tone "ping" — higher and a touch louder than a normal chat msg
+    this.playTone('chat', 1320, 0.12, 'sine', 0.08);
+    setTimeout(() => this.playTone('chat', 1760, 0.18, 'sine', 0.07), 110);
+    setTimeout(() => this.playTone('chat', 2100, 0.12, 'triangle', 0.05), 240);
+  }
 }
 
 export const soundManager = new SoundManager();

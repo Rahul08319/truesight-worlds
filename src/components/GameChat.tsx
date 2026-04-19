@@ -1,6 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMessage, TypingUser } from '@/hooks/useGameChat';
 import { soundManager } from '@/lib/soundManager';
+import type { PlayerColor } from '@/lib/ludoGame';
+
+export interface ChatPlayer {
+  name: string;
+  color: PlayerColor;
+  avatar: string;
+}
 
 interface GameChatProps {
   messages: ChatMessage[];
@@ -9,6 +16,9 @@ interface GameChatProps {
   onTyping?: () => void;
   isHost?: boolean;
   onClearChat?: () => void;
+  players?: ChatPlayer[];
+  selfName?: string;
+  onMention?: (colors: PlayerColor[]) => void;
 }
 
 const colorText: Record<string, string> = {
@@ -16,6 +26,13 @@ const colorText: Record<string, string> = {
   blue: 'text-ludo-blue',
   yellow: 'text-ludo-yellow',
   green: 'text-ludo-green',
+};
+
+const mentionBg: Record<string, string> = {
+  red: 'bg-ludo-red/20 text-ludo-red',
+  blue: 'bg-ludo-blue/20 text-ludo-blue',
+  yellow: 'bg-ludo-yellow/20 text-ludo-yellow',
+  green: 'bg-ludo-green/20 text-ludo-green',
 };
 
 const QUICK_MESSAGES = [
@@ -29,7 +46,7 @@ const QUICK_MESSAGES = [
 
 const EMOJI_REACTIONS = ['👍', '😂', '🔥', '😮', '😢', '👏'];
 
-const GROUP_WINDOW_MS = 60_000; // group messages within 1 min from same sender
+const GROUP_WINDOW_MS = 60_000;
 
 function formatRelative(ts: number, now: number): string {
   const diff = Math.max(0, now - ts);
@@ -42,6 +59,11 @@ function formatRelative(ts: number, now: number): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   return `${day}d ago`;
+}
+
+function formatAbsolute(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleString();
 }
 
 interface MessageGroup {
@@ -81,8 +103,72 @@ function groupMessages(messages: ChatMessage[]): MessageGroup[] {
   return groups;
 }
 
+// Find @mentions in text. Returns matched player names (case-insensitive, longest-first).
+function findMentions(text: string, players: ChatPlayer[]): ChatPlayer[] {
+  if (!players.length) return [];
+  // Sort by name length desc to prefer longest matches first
+  const sorted = [...players].sort((a, b) => b.name.length - a.name.length);
+  const found = new Map<string, ChatPlayer>();
+  const lower = text.toLowerCase();
+  for (const p of sorted) {
+    const needle = '@' + p.name.toLowerCase();
+    if (lower.includes(needle)) {
+      found.set(p.color, p);
+    }
+  }
+  return Array.from(found.values());
+}
+
+// Render a message text with mentions highlighted
+function renderTextWithMentions(text: string, players: ChatPlayer[], selfName?: string): React.ReactNode {
+  if (!players.length) return text;
+  // Build a regex of @Names sorted longest-first
+  const sorted = [...players].sort((a, b) => b.name.length - a.name.length);
+  const escaped = sorted.map(p => p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`@(${escaped.join('|')})\\b`, 'gi');
+  const parts: React.ReactNode[] = [];
+  let lastIdx = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > lastIdx) parts.push(text.slice(lastIdx, m.index));
+    const name = m[1];
+    const player = sorted.find(p => p.name.toLowerCase() === name.toLowerCase());
+    const isSelf = selfName && name.toLowerCase() === selfName.toLowerCase();
+    if (player) {
+      parts.push(
+        <span
+          key={`m-${key++}`}
+          className={`px-1 rounded font-semibold ${mentionBg[player.color] || 'bg-primary/20 text-primary'} ${isSelf ? 'ring-1 ring-primary' : ''}`}
+        >
+          @{player.name}
+        </span>
+      );
+    } else {
+      parts.push(m[0]);
+    }
+    lastIdx = m.index + m[0].length;
+  }
+  if (lastIdx < text.length) parts.push(text.slice(lastIdx));
+  return parts;
+}
+
+function buildExportText(messages: ChatMessage[]): string {
+  const lines = [
+    `Ludo Game Chat — exported ${new Date().toLocaleString()}`,
+    `Messages: ${messages.length}`,
+    '─'.repeat(50),
+    '',
+  ];
+  for (const m of messages) {
+    lines.push(`[${formatAbsolute(m.timestamp)}] ${m.playerAvatar} ${m.playerName}: ${m.text}`);
+  }
+  return lines.join('\n');
+}
+
 const GameChat: React.FC<GameChatProps> = ({
   messages, onSend, typingUsers = [], onTyping, isHost, onClearChat,
+  players = [], selfName, onMention,
 }) => {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -92,9 +178,13 @@ const GameChat: React.FC<GameChatProps> = ({
   const [gameVol, setGameVol] = useState(soundManager.getVolume('game'));
   const [chatVol, setChatVol] = useState(soundManager.getVolume('chat'));
   const [now, setNow] = useState(Date.now());
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const unreadRef = useRef(0);
   const [unread, setUnread] = useState(0);
+  const lastSeenIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     return soundManager.subscribe(() => {
@@ -103,24 +193,53 @@ const GameChat: React.FC<GameChatProps> = ({
     });
   }, []);
 
-  // Tick relative timestamps every 30s while open
   useEffect(() => {
     if (!isOpen) return;
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, [isOpen]);
 
+  // Process new messages: detect mentions, play sounds, fire callbacks
   useEffect(() => {
+    if (messages.length === 0) return;
+    const lastSeen = lastSeenIdRef.current;
+    const lastSeenIdx = lastSeen ? messages.findIndex(m => m.id === lastSeen) : -1;
+    const newOnes = lastSeenIdx >= 0 ? messages.slice(lastSeenIdx + 1) : messages;
+    lastSeenIdRef.current = messages[messages.length - 1].id;
+    if (newOnes.length === 0) return;
+
+    // Find mentions across new messages
+    const mentionedColors = new Set<PlayerColor>();
+    let selfMentioned = false;
+    for (const m of newOnes) {
+      const mentions = findMentions(m.text, players);
+      for (const p of mentions) {
+        mentionedColors.add(p.color);
+        if (selfName && p.name.toLowerCase() === selfName.toLowerCase()) {
+          selfMentioned = true;
+        }
+      }
+    }
+
+    if (mentionedColors.size > 0) {
+      onMention?.(Array.from(mentionedColors));
+    }
+
     if (isOpen) {
       scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
       unreadRef.current = 0;
       setUnread(0);
-    } else if (messages.length > 0) {
-      soundManager.chatMessage();
-      unreadRef.current++;
+    } else {
+      unreadRef.current += newOnes.length;
       setUnread(unreadRef.current);
     }
-  }, [messages, isOpen]);
+
+    if (selfMentioned) {
+      soundManager.chatMention();
+    } else if (!isOpen) {
+      soundManager.chatMessage();
+    }
+  }, [messages, isOpen, players, selfName, onMention]);
 
   useEffect(() => {
     if (isOpen && typingUsers.length > 0) {
@@ -133,11 +252,44 @@ const GameChat: React.FC<GameChatProps> = ({
     soundManager.chatMessage();
     onSend(input);
     setInput('');
+    setShowMentionMenu(false);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInput(e.target.value);
-    if (e.target.value.trim()) onTyping?.();
+    const val = e.target.value;
+    setInput(val);
+    if (val.trim()) onTyping?.();
+
+    // Detect open @mention menu: last @ before caret without intervening space
+    const caret = e.target.selectionStart ?? val.length;
+    const before = val.slice(0, caret);
+    const atIdx = before.lastIndexOf('@');
+    if (atIdx >= 0) {
+      const seg = before.slice(atIdx + 1);
+      if (!/\s/.test(seg)) {
+        setShowMentionMenu(true);
+        setMentionFilter(seg.toLowerCase());
+        return;
+      }
+    }
+    setShowMentionMenu(false);
+  };
+
+  const insertMention = (name: string) => {
+    const el = inputRef.current;
+    const caret = el?.selectionStart ?? input.length;
+    const before = input.slice(0, caret);
+    const after = input.slice(caret);
+    const atIdx = before.lastIndexOf('@');
+    if (atIdx < 0) return;
+    const newVal = before.slice(0, atIdx) + '@' + name + ' ' + after;
+    setInput(newVal);
+    setShowMentionMenu(false);
+    setTimeout(() => {
+      el?.focus();
+      const pos = atIdx + name.length + 2;
+      el?.setSelectionRange(pos, pos);
+    }, 0);
   };
 
   const handleClear = () => {
@@ -149,6 +301,21 @@ const GameChat: React.FC<GameChatProps> = ({
     }
     onClearChat();
     setConfirmClear(false);
+  };
+
+  const handleExport = () => {
+    if (messages.length === 0) return;
+    const txt = buildExportText(messages);
+    const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.download = `ludo-chat-${stamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   if (!isOpen) {
@@ -177,11 +344,25 @@ const GameChat: React.FC<GameChatProps> = ({
   const soundIcon = gameVol === 0 && chatVol === 0 ? '🔇' : '🔊';
   const groups = groupMessages(messages);
 
+  const filteredMentionPlayers = players.filter(p =>
+    p.name.toLowerCase().startsWith(mentionFilter)
+  );
+
   return (
     <div className="fixed bottom-4 right-4 z-50 w-72 bg-card/95 backdrop-blur-sm rounded-xl border border-border shadow-xl flex flex-col animate-slide-in">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="font-heading font-semibold text-sm text-foreground">💬 Game Chat</span>
         <div className="flex items-center gap-1">
+          {messages.length > 0 && (
+            <button
+              onClick={handleExport}
+              title="Export chat as .txt"
+              aria-label="Export chat"
+              className="text-muted-foreground hover:text-foreground text-base px-1"
+            >
+              ⬇️
+            </button>
+          )}
           {isHost && onClearChat && messages.length > 0 && (
             <button
               onClick={handleClear}
@@ -239,7 +420,9 @@ const GameChat: React.FC<GameChatProps> = ({
 
       <div ref={scrollRef} className="flex-1 max-h-56 overflow-y-auto px-3 py-2 space-y-2">
         {messages.length === 0 && typingUsers.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-4">No messages yet</p>
+          <p className="text-xs text-muted-foreground text-center py-4">
+            No messages yet{players.length > 0 && <><br />Tip: type @ to mention a player</>}
+          </p>
         )}
         {groups.map(g => {
           const colorClass = colorText[g.playerColor] || 'text-foreground';
@@ -254,7 +437,9 @@ const GameChat: React.FC<GameChatProps> = ({
               </div>
               <div className="pl-6 space-y-0.5">
                 {g.items.map(m => (
-                  <div key={m.id} className="text-foreground break-words">{m.text}</div>
+                  <div key={m.id} className="text-foreground break-words">
+                    {renderTextWithMentions(m.text, players, selfName)}
+                  </div>
                 ))}
               </div>
             </div>
@@ -304,23 +489,43 @@ const GameChat: React.FC<GameChatProps> = ({
         </button>
       </div>
 
-      <div className="flex gap-1.5 p-2 border-t border-border">
-        <input
-          type="text"
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder="Type a message..."
-          maxLength={200}
-          className="flex-1 bg-muted rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary"
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim()}
-          className="px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-40 hover:brightness-110 transition-all"
-        >
-          Send
-        </button>
+      <div className="relative">
+        {showMentionMenu && filteredMentionPlayers.length > 0 && (
+          <div className="absolute bottom-full left-2 right-2 mb-1 bg-popover border border-border rounded-lg shadow-lg overflow-hidden z-10">
+            {filteredMentionPlayers.map(p => (
+              <button
+                key={p.color}
+                onClick={() => insertMention(p.name)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors text-left"
+              >
+                <span>{p.avatar}</span>
+                <span className={`font-semibold ${colorText[p.color]}`}>@{p.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-1.5 p-2 border-t border-border">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleSend();
+              if (e.key === 'Escape') setShowMentionMenu(false);
+            }}
+            placeholder={players.length > 0 ? 'Type a message... (@ to mention)' : 'Type a message...'}
+            maxLength={200}
+            className="flex-1 bg-muted rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary"
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim()}
+            className="px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-40 hover:brightness-110 transition-all"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );
