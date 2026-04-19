@@ -37,6 +37,8 @@ const LudoGame: React.FC = () => {
   const [showMultiplayer, setShowMultiplayer] = useState(false);
   const [undoStack, setUndoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ state: GameState; stats: GameStats; logs: LogEntry[] }[]>([]);
+  const [mentionedColors, setMentionedColors] = useState<PlayerColor[]>([]);
+  const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const multiplayer = useMultiplayer();
   const isMultiplayerGame = !!multiplayer.room;
   const currentPlayerForChat = gameState?.players[gameState.currentPlayerIndex];
@@ -49,6 +51,12 @@ const LudoGame: React.FC = () => {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
   const animatingRef = useRef(false);
+
+  const handleMention = useCallback((colors: PlayerColor[]) => {
+    setMentionedColors(colors);
+    if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
+    mentionTimerRef.current = setTimeout(() => setMentionedColors([]), 4000);
+  }, []);
 
   const addLog = useCallback((color: PlayerColor, message: string, type: LogEntry['type']) => {
     setLogEntries(prev => [...prev, { id: ++logIdCounter, color, message, type, timestamp: Date.now() }]);
@@ -410,7 +418,7 @@ const LudoGame: React.FC = () => {
       <div className="flex flex-col items-center gap-3 flex-shrink-0">
         {/* Top bar */}
         <div className="flex items-center gap-3 w-full max-w-[520px] justify-between">
-          <PlayerPanel gameState={gameState} />
+          <PlayerPanel gameState={gameState} mentionedColors={mentionedColors} />
           <GameTimer currentPlayerColor={currentPlayer.color} isFinished={gameState.phase === 'finished'} />
           <div className="flex gap-1.5">
             <button
@@ -511,6 +519,9 @@ const LudoGame: React.FC = () => {
           onTyping={chat.sendTyping}
           isHost={multiplayer.room!.hostPlayerId === multiplayer.playerId}
           onClearChat={chat.clearHistory}
+          players={gameState.players.map(p => ({ name: p.name, color: p.color, avatar: p.avatar }))}
+          selfName={currentPlayerForChat?.name}
+          onMention={handleMention}
         />
       )}
     </div>
