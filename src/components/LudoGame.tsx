@@ -522,6 +522,7 @@ const LudoGame: React.FC = () => {
           players={gameState.players.map(p => ({ name: p.name, color: p.color, avatar: p.avatar }))}
           selfName={currentPlayerForChat?.name}
           onMention={handleMention}
+          onToggleReaction={chat.toggleReaction}
         />
       )}
     </div>
