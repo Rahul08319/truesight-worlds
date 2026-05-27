@@ -21,6 +21,7 @@ export type Database = {
           player_avatar: string
           player_color: string
           player_name: string
+          reactions: Json
           room_id: string
           text: string
         }
@@ -30,6 +31,7 @@ export type Database = {
           player_avatar?: string
           player_color?: string
           player_name: string
+          reactions?: Json
           room_id: string
           text: string
         }
@@ -39,6 +41,7 @@ export type Database = {
           player_avatar?: string
           player_color?: string
           player_name?: string
+          reactions?: Json
           room_id?: string
           text?: string
         }
