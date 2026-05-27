@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { ChatMessage, TypingUser } from '@/hooks/useGameChat';
 import { soundManager } from '@/lib/soundManager';
 import type { PlayerColor } from '@/lib/ludoGame';
+import EmojiPicker from '@/components/EmojiPicker';
 
 export interface ChatPlayer {
   name: string;
@@ -19,6 +20,7 @@ interface GameChatProps {
   players?: ChatPlayer[];
   selfName?: string;
   onMention?: (colors: PlayerColor[]) => void;
+  onToggleReaction?: (messageId: string, emoji: string) => void;
 }
 
 const colorText: Record<string, string> = {
@@ -44,9 +46,8 @@ const QUICK_MESSAGES = [
   '🏆 GG!',
 ];
 
-const EMOJI_REACTIONS = ['👍', '😂', '🔥', '😮', '😢', '👏'];
-
 const GROUP_WINDOW_MS = 60_000;
+const MUTE_WHEN_OPEN_KEY = 'ludo-mute-mentions-when-open-v1';
 
 function formatRelative(ts: number, now: number): string {
   const diff = Math.max(0, now - ts);
@@ -168,7 +169,7 @@ function buildExportText(messages: ChatMessage[]): string {
 
 const GameChat: React.FC<GameChatProps> = ({
   messages, onSend, typingUsers = [], onTyping, isHost, onClearChat,
-  players = [], selfName, onMention,
+  players = [], selfName, onMention, onToggleReaction,
 }) => {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -180,11 +181,22 @@ const GameChat: React.FC<GameChatProps> = ({
   const [now, setNow] = useState(Date.now());
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
+  const [muteMentionsWhenOpen, setMuteMentionsWhenOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem(MUTE_WHEN_OPEN_KEY) === '1'; } catch { return false; }
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const unreadRef = useRef(0);
   const [unread, setUnread] = useState(0);
+  const mentionCountRef = useRef(0);
+  const [mentionCount, setMentionCount] = useState(0);
   const lastSeenIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(MUTE_WHEN_OPEN_KEY, muteMentionsWhenOpen ? '1' : '0'); } catch {}
+  }, [muteMentionsWhenOpen]);
 
   useEffect(() => {
     return soundManager.subscribe(() => {
@@ -229,13 +241,22 @@ const GameChat: React.FC<GameChatProps> = ({
       scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
       unreadRef.current = 0;
       setUnread(0);
+      mentionCountRef.current = 0;
+      setMentionCount(0);
     } else {
       unreadRef.current += newOnes.length;
       setUnread(unreadRef.current);
+      if (selfMentioned) {
+        mentionCountRef.current += 1;
+        setMentionCount(mentionCountRef.current);
+      }
     }
 
     if (selfMentioned) {
-      soundManager.chatMention();
+      // Suppress mention ping when chat is open AND the user opted-in to muting
+      if (!(isOpen && muteMentionsWhenOpen)) {
+        soundManager.chatMention();
+      }
     } else if (!isOpen) {
       soundManager.chatMessage();
     }
@@ -321,13 +342,25 @@ const GameChat: React.FC<GameChatProps> = ({
   if (!isOpen) {
     return (
       <button
-        onClick={() => { setIsOpen(true); setUnread(0); unreadRef.current = 0; }}
+        onClick={() => {
+          setIsOpen(true);
+          setUnread(0); unreadRef.current = 0;
+          setMentionCount(0); mentionCountRef.current = 0;
+        }}
         className="fixed bottom-4 right-4 z-50 px-4 py-3 rounded-full bg-primary text-primary-foreground font-semibold shadow-lg hover:brightness-110 transition-all"
       >
         💬 Chat
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center">
             {unread}
+          </span>
+        )}
+        {mentionCount > 0 && (
+          <span
+            title={`${mentionCount} mention${mentionCount === 1 ? '' : 's'}`}
+            className="absolute -top-1 -left-1 min-w-5 h-5 px-1 rounded-full bg-ludo-yellow text-background text-[10px] font-bold flex items-center justify-center ring-2 ring-background animate-pulse"
+          >
+            @{mentionCount}
           </span>
         )}
       </button>
@@ -415,6 +448,15 @@ const GameChat: React.FC<GameChatProps> = ({
             />
             <span className="text-[10px] text-muted-foreground w-7 text-right">{Math.round(chatVol * 100)}</span>
           </div>
+          <label className="flex items-center gap-2 text-[11px] text-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={muteMentionsWhenOpen}
+              onChange={e => setMuteMentionsWhenOpen(e.target.checked)}
+              className="accent-primary"
+            />
+            <span>Mute @mention ping while chat is open</span>
+          </label>
         </div>
       )}
 
@@ -436,11 +478,59 @@ const GameChat: React.FC<GameChatProps> = ({
                 </span>
               </div>
               <div className="pl-6 space-y-0.5">
-                {g.items.map(m => (
-                  <div key={m.id} className="text-foreground break-words">
-                    {renderTextWithMentions(m.text, players, selfName)}
-                  </div>
-                ))}
+                {g.items.map(m => {
+                  const reactions = m.reactions || {};
+                  const reactionEntries = Object.entries(reactions).filter(([, v]) => v.length > 0);
+                  return (
+                    <div key={m.id} className="group/msg relative text-foreground break-words">
+                      <div className="flex items-start gap-1">
+                        <div className="flex-1">
+                          {renderTextWithMentions(m.text, players, selfName)}
+                        </div>
+                        {onToggleReaction && (
+                          <button
+                            onClick={() => setReactionPickerFor(reactionPickerFor === m.id ? null : m.id)}
+                            title="React"
+                            aria-label="Add reaction"
+                            className="opacity-0 group-hover/msg:opacity-100 transition-opacity text-[10px] px-1 rounded bg-muted hover:bg-accent text-muted-foreground hover:text-foreground"
+                          >
+                            😀+
+                          </button>
+                        )}
+                      </div>
+                      {reactionEntries.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {reactionEntries.map(([emoji, names]) => {
+                            const mine = !!selfName && names.includes(selfName);
+                            return (
+                              <button
+                                key={emoji}
+                                onClick={() => onToggleReaction(m.id, emoji)}
+                                title={names.join(', ')}
+                                className={`text-[10px] leading-none px-1.5 py-0.5 rounded-full border transition-colors ${
+                                  mine
+                                    ? 'bg-primary/20 border-primary text-primary'
+                                    : 'bg-muted border-border hover:bg-accent text-foreground'
+                                }`}
+                              >
+                                <span className="text-sm align-middle">{emoji}</span>
+                                <span className="ml-1 align-middle">{names.length}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {reactionPickerFor === m.id && onToggleReaction && (
+                        <div className="absolute right-0 top-5 z-20">
+                          <EmojiPicker
+                            onSelect={emoji => onToggleReaction(m.id, emoji)}
+                            onClose={() => setReactionPickerFor(null)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -471,22 +561,30 @@ const GameChat: React.FC<GameChatProps> = ({
         </div>
       )}
 
-      <div className="flex items-center gap-0.5 px-2 py-1 border-t border-border">
-        {EMOJI_REACTIONS.map(e => (
-          <button
-            key={e}
-            onClick={() => { soundManager.chatEmoji(); onSend(e); }}
-            className="text-sm hover:scale-125 transition-transform"
-          >
-            {e}
-          </button>
-        ))}
+      <div className="relative flex items-center gap-1 px-2 py-1 border-t border-border">
+        <button
+          onClick={() => setShowEmojiPicker(v => !v)}
+          title="Open emoji picker"
+          aria-label="Open emoji picker"
+          className="text-base px-1.5 py-0.5 rounded hover:bg-accent transition-colors"
+        >
+          😀
+        </button>
+        <span className="text-[10px] text-muted-foreground">Pick emoji to send</span>
         <button
           onClick={() => setShowQuick(v => !v)}
           className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:text-foreground transition-colors"
         >
           {showQuick ? '▼' : '▲'} Quick
         </button>
+        {showEmojiPicker && (
+          <div className="absolute bottom-full left-2 mb-1 z-30">
+            <EmojiPicker
+              onSelect={emoji => { soundManager.chatEmoji(); onSend(emoji); }}
+              onClose={() => setShowEmojiPicker(false)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="relative">
