@@ -8,6 +8,7 @@ export interface ChatMessage {
   playerColor: string;
   text: string;
   timestamp: number;
+  reactions?: Record<string, string[]>; // emoji -> list of player names
 }
 
 interface TypingPayload {
@@ -39,7 +40,7 @@ export function useGameChat(roomId: string | null, playerName: string, playerAva
   const addMessage = useCallback((msg: ChatMessage) => {
     if (seenIdsRef.current.has(msg.id)) return;
     seenIdsRef.current.add(msg.id);
-    setMessages(prev => [...prev, msg].slice(-HISTORY_LIMIT));
+    setMessages(prev => [...prev, { reactions: {}, ...msg }].slice(-HISTORY_LIMIT));
   }, []);
 
   // Load history + subscribe
@@ -66,6 +67,7 @@ export function useGameChat(roomId: string | null, playerName: string, playerAva
           playerColor: r.player_color,
           text: r.text,
           timestamp: new Date(r.created_at).getTime(),
+          reactions: r.reactions || {},
         }));
         loaded.forEach(m => seenIdsRef.current.add(m.id));
         setMessages(loaded);
@@ -95,6 +97,10 @@ export function useGameChat(roomId: string | null, playerName: string, playerAva
       .on('broadcast', { event: 'cleared' }, () => {
         seenIdsRef.current = new Set();
         setMessages([]);
+      })
+      .on('broadcast', { event: 'reaction' }, ({ payload }) => {
+        const { messageId, reactions } = payload as { messageId: string; reactions: Record<string, string[]> };
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m));
       })
       .subscribe();
 
@@ -164,5 +170,29 @@ export function useGameChat(roomId: string | null, playerName: string, playerAva
     channelRef.current.send({ type: 'broadcast', event: 'cleared', payload: {} });
   }, [roomId]);
 
-  return { messages, sendMessage, typingUsers, sendTyping, clearHistory };
+  const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!channelRef.current) return;
+    let nextReactions: Record<string, string[]> | null = null;
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m;
+      const current = { ...(m.reactions || {}) } as Record<string, string[]>;
+      const list = current[emoji] ? [...current[emoji]] : [];
+      const idx = list.indexOf(playerName);
+      if (idx >= 0) list.splice(idx, 1);
+      else list.push(playerName);
+      if (list.length === 0) delete current[emoji];
+      else current[emoji] = list;
+      nextReactions = current;
+      return { ...m, reactions: current };
+    }));
+    if (!nextReactions) return;
+    channelRef.current.send({ type: 'broadcast', event: 'reaction', payload: { messageId, reactions: nextReactions } });
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({ reactions: nextReactions as any })
+      .eq('id', messageId);
+    if (error) console.error('Reaction persist failed:', error);
+  }, [playerName]);
+
+  return { messages, sendMessage, typingUsers, sendTyping, clearHistory, toggleReaction };
 }
