@@ -21,6 +21,7 @@ import GameTimer from '@/components/GameTimer';
 import GameChat from '@/components/GameChat';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useGameChat } from '@/hooks/useGameChat';
+import * as yt from '@/lib/ytPlayables';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
@@ -51,6 +52,85 @@ const LudoGame: React.FC = () => {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevStateRef = useRef<GameState | null>(null);
   const animatingRef = useRef(false);
+
+  // ── YouTube Playables SDK lifecycle ──────────────────────────────────────
+  // firstFrameReady: as soon as React has painted. gameReady: when the setup
+  // screen (or a loaded game) is interactable. Pause/resume, audio, and
+  // language are wired to the existing sound + i18n hooks.
+  useEffect(() => {
+    // First frame is on the screen once this effect runs.
+    yt.firstFrameReady();
+
+    // Initialize audio state from YouTube user settings.
+    const initialAudio = yt.isAudioEnabled();
+    setSoundOn(initialAudio);
+    soundManager.setEnabled(initialAudio);
+
+    const offAudio = yt.onAudioEnabledChange((enabled) => {
+      setSoundOn(enabled);
+      soundManager.setEnabled(enabled);
+    });
+    const offPause = yt.onPause(() => {
+      // Best-effort snapshot save on pause.
+      const snapshot = { gameState, gameStats, logEntries };
+      yt.saveData(JSON.stringify(snapshot));
+    });
+    const offResume = yt.onResume(() => {
+      // No-op: React state is already retained.
+    });
+
+    // Restore any prior save (only when not already in a game).
+    (async () => {
+      const raw = await yt.loadData();
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed?.gameState && !gameState) {
+          setGameState(parsed.gameState);
+          if (parsed.gameStats) setGameStats(parsed.gameStats);
+          if (Array.isArray(parsed.logEntries)) setLogEntries(parsed.logEntries);
+        }
+      } catch (e) {
+        console.warn('[ytgame] failed to parse save data', e);
+        yt.logWarning();
+      }
+    })();
+
+    return () => {
+      offAudio?.();
+      offPause?.();
+      offResume?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mark game as interactable whenever we have a screen the user can act on.
+  useEffect(() => {
+    yt.gameReady();
+  }, [gameState, showMultiplayer]);
+
+  // Persist state whenever it meaningfully changes.
+  useEffect(() => {
+    if (!gameState) return;
+    const t = setTimeout(() => {
+      yt.saveData(JSON.stringify({ gameState, gameStats, logEntries: logEntries.slice(-50) }));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [gameState, gameStats, logEntries]);
+
+  // Send winner's score to YouTube on game end + offer an interstitial ad
+  // before the next game.
+  useEffect(() => {
+    if (gameState?.phase !== 'finished' || !gameState.winner) return;
+    const wp = gameState.players.find(p => p.color === gameState.winner);
+    if (!wp) return;
+    const stats = gameStats.perPlayer[wp.color];
+    // Composite score: wins are dominant, kills add flavor, moves break ties.
+    const score = 10000 + (stats?.kills ?? 0) * 100 + (stats?.moves ?? 0);
+    yt.sendScore(score);
+    yt.requestInterstitialAd();
+  }, [gameState?.phase, gameState?.winner]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const handleMention = useCallback((colors: PlayerColor[]) => {
     setMentionedColors(colors);
