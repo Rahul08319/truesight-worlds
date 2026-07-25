@@ -22,6 +22,8 @@ import GameChat from '@/components/GameChat';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useGameChat } from '@/hooks/useGameChat';
 import * as yt from '@/lib/ytPlayables';
+import { runSmokeTest } from '@/lib/ytSmokeTest';
+import { useTranslations } from '@/lib/i18n';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
@@ -30,6 +32,10 @@ const LudoGame: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [movableTokens, setMovableTokens] = useState<number[]>([]);
   const [soundOn, setSoundOn] = useState(true);
+  const [guaranteedSix, setGuaranteedSix] = useState(0);
+  const [rewardBusy, setRewardBusy] = useState(false);
+  const [bestScore, setBestScore] = useState(0);
+  const { t } = useTranslations();
   const [animatingToken, setAnimatingToken] = useState<{ color: PlayerColor; id: number } | null>(null);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [showHistory, setShowHistory] = useState(true);
@@ -109,6 +115,12 @@ const LudoGame: React.FC = () => {
     yt.gameReady();
   }, [gameState, showMultiplayer]);
 
+  // Smoke test: verify lifecycle hooks fired after the app is interactable.
+  useEffect(() => {
+    const timer = setTimeout(() => runSmokeTest(), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Persist state whenever it meaningfully changes.
   useEffect(() => {
     if (!gameState) return;
@@ -125,11 +137,31 @@ const LudoGame: React.FC = () => {
     const wp = gameState.players.find(p => p.color === gameState.winner);
     if (!wp) return;
     const stats = gameStats.perPlayer[wp.color];
-    // Composite score: wins are dominant, kills add flavor, moves break ties.
-    const score = 10000 + (stats?.kills ?? 0) * 100 + (stats?.moves ?? 0);
-    yt.sendScore(score);
+    // Composite score: wins are dominant, kills add flavor, fewer moves wins ties.
+    const score = 10000 + (stats?.kills ?? 0) * 100 + Math.max(0, 500 - (stats?.moves ?? 0));
+    // Report the best score achieved by this player to YouTube.
+    const finalScore = Math.max(score, bestScore);
+    setBestScore(finalScore);
+    yt.sendScore(finalScore);
     yt.requestInterstitialAd();
   }, [gameState?.phase, gameState?.winner]);
+
+  // Rewarded ad: watch an ad to guarantee your next roll is a 6.
+  const handleWatchRewardedAd = useCallback(async () => {
+    if (rewardBusy) return;
+    setRewardBusy(true);
+    try {
+      const granted = await yt.requestRewardedAd('free_reroll_v1');
+      if (granted) {
+        setGuaranteedSix(n => n + 1);
+        setGameState(gs => gs ? { ...gs, message: t('reward.granted') } : gs);
+      } else {
+        setGameState(gs => gs ? { ...gs, message: t('reward.failed') } : gs);
+      }
+    } finally {
+      setRewardBusy(false);
+    }
+  }, [rewardBusy, t]);
   // ─────────────────────────────────────────────────────────────────────────
 
   const handleMention = useCallback((colors: PlayerColor[]) => {
@@ -324,7 +356,11 @@ const LudoGame: React.FC = () => {
     setGameState(newState);
 
     setTimeout(() => {
-      const dice = rollDice();
+      let dice = rollDice();
+      if (guaranteedSix > 0) {
+        dice = 6;
+        setGuaranteedSix(n => Math.max(0, n - 1));
+      }
       addLog(currentColor, `Rolled ${dice}`, 'roll');
       setGameStats(s => ({
         ...s, totalRolls: s.totalRolls + 1,
@@ -366,7 +402,7 @@ const LudoGame: React.FC = () => {
         setGameState(stateWithDice);
       }
     }, 600);
-  }, [gameState, addLog, animateAndMove, saveUndoSnapshot]);
+  }, [gameState, addLog, animateAndMove, saveUndoSnapshot, guaranteedSix]);
 
   const handleTokenClick = useCallback((color: PlayerColor, tokenId: number) => {
     if (!gameState || gameState.phase !== 'selecting' || animatingRef.current) return;
@@ -505,7 +541,7 @@ const LudoGame: React.FC = () => {
               onClick={handleUndo}
               disabled={undoStack.length === 0 || animatingRef.current}
               className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Undo last move"
+              title={t('action.undo')}
             >
               ↩️
             </button>
@@ -513,27 +549,27 @@ const LudoGame: React.FC = () => {
               onClick={handleRedo}
               disabled={redoStack.length === 0 || animatingRef.current}
               className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Redo"
+              title={t('action.redo')}
             >
               ↪️
             </button>
             <button
               onClick={toggleSound}
               className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
-              title={soundOn ? 'Mute sounds' : 'Enable sounds'}
+              title={soundOn ? t('action.mute') : t('action.unmute')}
             >
               {soundOn ? '🔊' : '🔇'}
             </button>
             <button
               onClick={() => setShowHistory(h => !h)}
               className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
-              title="Toggle history"
+              title={t('action.history')}
             >
               📋
             </button>
             <RulesModal
               trigger={
-                <button className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
+                <button title={t('action.rules')} className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
                   📖
                 </button>
               }
@@ -561,6 +597,17 @@ const LudoGame: React.FC = () => {
           <div className="bg-card/90 backdrop-blur-sm rounded-xl px-5 py-3 max-w-xs text-center board-inset">
             <p className="text-foreground text-sm font-medium">{gameState.message}</p>
           </div>
+
+          {isHumanTurn && gameState.phase !== 'finished' && (
+            <button
+              onClick={handleWatchRewardedAd}
+              disabled={rewardBusy}
+              className="px-3 py-2 rounded-xl text-sm font-semibold bg-amber-500/90 text-amber-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
+              title={t('reward.button')}
+            >
+              {guaranteedSix > 0 ? `🎲 x${guaranteedSix}` : t('reward.button')}
+            </button>
+          )}
         </div>
 
         {gameState.phase === 'finished' && !showVictory && (
@@ -568,7 +615,7 @@ const LudoGame: React.FC = () => {
             onClick={() => setGameState(null)}
             className="px-6 py-3 rounded-xl font-heading font-bold bg-primary text-primary-foreground hover:brightness-110 transition-all"
           >
-            Play Again
+            {t('action.playAgain')}
           </button>
         )}
       </div>
