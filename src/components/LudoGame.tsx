@@ -541,7 +541,7 @@ const LudoGame: React.FC = () => {
               onClick={handleUndo}
               disabled={undoStack.length === 0 || animatingRef.current}
               className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Undo last move"
+              title={t('action.undo')}
             >
               ↩️
             </button>
@@ -549,27 +549,27 @@ const LudoGame: React.FC = () => {
               onClick={handleRedo}
               disabled={redoStack.length === 0 || animatingRef.current}
               className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Redo"
+              title={t('action.redo')}
             >
               ↪️
             </button>
             <button
               onClick={toggleSound}
               className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
-              title={soundOn ? 'Mute sounds' : 'Enable sounds'}
+              title={soundOn ? t('action.mute') : t('action.unmute')}
             >
               {soundOn ? '🔊' : '🔇'}
             </button>
             <button
               onClick={() => setShowHistory(h => !h)}
               className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
-              title="Toggle history"
+              title={t('action.history')}
             >
               📋
             </button>
             <RulesModal
               trigger={
-                <button className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
+                <button title={t('action.rules')} className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors">
                   📖
                 </button>
               }
@@ -597,6 +597,17 @@ const LudoGame: React.FC = () => {
           <div className="bg-card/90 backdrop-blur-sm rounded-xl px-5 py-3 max-w-xs text-center board-inset">
             <p className="text-foreground text-sm font-medium">{gameState.message}</p>
           </div>
+
+          {isHumanTurn && gameState.phase !== 'finished' && (
+            <button
+              onClick={handleWatchRewardedAd}
+              disabled={rewardBusy}
+              className="px-3 py-2 rounded-xl text-sm font-semibold bg-amber-500/90 text-amber-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
+              title={t('reward.button')}
+            >
+              {guaranteedSix > 0 ? `🎲 x${guaranteedSix}` : t('reward.button')}
+            </button>
+          )}
         </div>
 
         {gameState.phase === 'finished' && !showVictory && (
@@ -604,7 +615,7 @@ const LudoGame: React.FC = () => {
             onClick={() => setGameState(null)}
             className="px-6 py-3 rounded-xl font-heading font-bold bg-primary text-primary-foreground hover:brightness-110 transition-all"
           >
-            Play Again
+            {t('action.playAgain')}
           </button>
         )}
       </div>
