@@ -117,8 +117,8 @@ const LudoGame: React.FC = () => {
 
   // Smoke test: verify lifecycle hooks fired after the app is interactable.
   useEffect(() => {
-    const t = setTimeout(() => runSmokeTest(), 500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => runSmokeTest(), 500);
+    return () => clearTimeout(timer);
   }, []);
 
   // Persist state whenever it meaningfully changes.
@@ -356,7 +356,11 @@ const LudoGame: React.FC = () => {
     setGameState(newState);
 
     setTimeout(() => {
-      const dice = rollDice();
+      let dice = rollDice();
+      if (guaranteedSix > 0) {
+        dice = 6;
+        setGuaranteedSix(n => Math.max(0, n - 1));
+      }
       addLog(currentColor, `Rolled ${dice}`, 'roll');
       setGameStats(s => ({
         ...s, totalRolls: s.totalRolls + 1,
