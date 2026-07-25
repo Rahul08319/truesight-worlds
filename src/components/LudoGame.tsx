@@ -22,6 +22,8 @@ import GameChat from '@/components/GameChat';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useGameChat } from '@/hooks/useGameChat';
 import * as yt from '@/lib/ytPlayables';
+import { runSmokeTest } from '@/lib/ytSmokeTest';
+import { useTranslations } from '@/lib/i18n';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
@@ -30,6 +32,10 @@ const LudoGame: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [movableTokens, setMovableTokens] = useState<number[]>([]);
   const [soundOn, setSoundOn] = useState(true);
+  const [guaranteedSix, setGuaranteedSix] = useState(0);
+  const [rewardBusy, setRewardBusy] = useState(false);
+  const [bestScore, setBestScore] = useState(0);
+  const { t } = useTranslations();
   const [animatingToken, setAnimatingToken] = useState<{ color: PlayerColor; id: number } | null>(null);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [showHistory, setShowHistory] = useState(true);
@@ -109,6 +115,12 @@ const LudoGame: React.FC = () => {
     yt.gameReady();
   }, [gameState, showMultiplayer]);
 
+  // Smoke test: verify lifecycle hooks fired after the app is interactable.
+  useEffect(() => {
+    const t = setTimeout(() => runSmokeTest(), 500);
+    return () => clearTimeout(t);
+  }, []);
+
   // Persist state whenever it meaningfully changes.
   useEffect(() => {
     if (!gameState) return;
@@ -125,11 +137,31 @@ const LudoGame: React.FC = () => {
     const wp = gameState.players.find(p => p.color === gameState.winner);
     if (!wp) return;
     const stats = gameStats.perPlayer[wp.color];
-    // Composite score: wins are dominant, kills add flavor, moves break ties.
-    const score = 10000 + (stats?.kills ?? 0) * 100 + (stats?.moves ?? 0);
-    yt.sendScore(score);
+    // Composite score: wins are dominant, kills add flavor, fewer moves wins ties.
+    const score = 10000 + (stats?.kills ?? 0) * 100 + Math.max(0, 500 - (stats?.moves ?? 0));
+    // Report the best score achieved by this player to YouTube.
+    const finalScore = Math.max(score, bestScore);
+    setBestScore(finalScore);
+    yt.sendScore(finalScore);
     yt.requestInterstitialAd();
   }, [gameState?.phase, gameState?.winner]);
+
+  // Rewarded ad: watch an ad to guarantee your next roll is a 6.
+  const handleWatchRewardedAd = useCallback(async () => {
+    if (rewardBusy) return;
+    setRewardBusy(true);
+    try {
+      const granted = await yt.requestRewardedAd('free_reroll_v1');
+      if (granted) {
+        setGuaranteedSix(n => n + 1);
+        setGameState(gs => gs ? { ...gs, message: t('reward.granted') } : gs);
+      } else {
+        setGameState(gs => gs ? { ...gs, message: t('reward.failed') } : gs);
+      }
+    } finally {
+      setRewardBusy(false);
+    }
+  }, [rewardBusy, t]);
   // ─────────────────────────────────────────────────────────────────────────
 
   const handleMention = useCallback((colors: PlayerColor[]) => {
