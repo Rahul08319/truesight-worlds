@@ -58,6 +58,11 @@ export const inPlayables = (): boolean => !!yt()?.IN_PLAYABLES_ENV;
 let firstFrameSent = false;
 let gameReadySent = false;
 
+export const lifecycle = {
+  get firstFrameSent() { return firstFrameSent; },
+  get gameReadySent() { return gameReadySent; },
+};
+
 export function firstFrameReady() {
   if (firstFrameSent) return;
   try {
