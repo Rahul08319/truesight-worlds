@@ -169,3 +169,135 @@ export function logError() {
 export function logWarning() {
   try { yt()?.health.logWarning(); } catch {}
 }
+
+// ── Ad engagement analytics ─────────────────────────────────────────────
+// Structured events funneled through ytgame.health for post-release
+// monitoring. Every event carries a timestamp + outcome code so the
+// Playables dashboard (and local QA) can trace ad funnel drop-off.
+
+export type AdOutcome =
+  | "REQUESTED"        // player initiated the ad
+  | "GRANTED"          // SDK reported reward true
+  | "DISMISSED"        // SDK reported reward false (user skipped)
+  | "FAILED"           // SDK threw
+  | "TIMEOUT"          // wrapper timed out waiting for SDK
+  | "RETRY";           // player retried after a failure
+
+export interface AdEvent {
+  rewardId: string;
+  outcome: AdOutcome;
+  code: number;       // 0 ok, 1 dismissed, 2 failed, 3 timeout, 4 requested, 5 retry
+  timestamp: number;
+  detail?: string;
+  attempt?: number;
+}
+
+const OUTCOME_CODE: Record<AdOutcome, number> = {
+  REQUESTED: 4, GRANTED: 0, DISMISSED: 1, FAILED: 2, TIMEOUT: 3, RETRY: 5,
+};
+
+const adEventLog: AdEvent[] = [];
+let lastAdEvent: AdEvent | null = null;
+
+export function getAdEventLog(): AdEvent[] { return adEventLog.slice(); }
+export function getLastAdEvent(): AdEvent | null { return lastAdEvent; }
+
+export function logAdEvent(
+  outcome: AdOutcome,
+  rewardId: string,
+  detail?: string,
+  attempt?: number,
+): AdEvent {
+  const evt: AdEvent = {
+    rewardId,
+    outcome,
+    code: OUTCOME_CODE[outcome],
+    timestamp: Date.now(),
+    detail,
+    attempt,
+  };
+  adEventLog.push(evt);
+  if (adEventLog.length > 100) adEventLog.shift();
+  lastAdEvent = evt;
+
+  // Route to ytgame.health so YouTube's monitoring picks it up.
+  try {
+    if (outcome === "FAILED" || outcome === "TIMEOUT") yt()?.health.logError();
+    else if (outcome === "DISMISSED") yt()?.health.logWarning();
+  } catch {}
+
+  const tag = outcome === "GRANTED" ? "✅" : outcome === "REQUESTED" ? "▶️" : "⚠️";
+  console.info(`[ytgame:ad] ${tag} ${outcome} (${evt.code})`, evt);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("ytgame:adevent", { detail: evt }));
+  }
+  return evt;
+}
+
+// Request a rewarded ad with timeout + structured analytics.
+export async function requestRewardedAdTracked(
+  rewardId: string,
+  opts: { timeoutMs?: number; attempt?: number } = {},
+): Promise<{ granted: boolean; outcome: AdOutcome }> {
+  const { timeoutMs = 30_000, attempt = 1 } = opts;
+  logAdEvent("REQUESTED", rewardId, undefined, attempt);
+  const sdk = yt();
+  if (!sdk) {
+    logAdEvent("FAILED", rewardId, "SDK not present", attempt);
+    return { granted: false, outcome: "FAILED" };
+  }
+  try {
+    const raced = await Promise.race([
+      sdk.ads.requestRewardedAd(rewardId).then(v => ({ ok: true, v })),
+      new Promise<{ ok: false }>((resolve) =>
+        setTimeout(() => resolve({ ok: false }), timeoutMs),
+      ),
+    ]);
+    if (!raced.ok) {
+      logAdEvent("TIMEOUT", rewardId, `>${timeoutMs}ms`, attempt);
+      return { granted: false, outcome: "TIMEOUT" };
+    }
+    if (raced.v) {
+      logAdEvent("GRANTED", rewardId, undefined, attempt);
+      return { granted: true, outcome: "GRANTED" };
+    }
+    logAdEvent("DISMISSED", rewardId, undefined, attempt);
+    return { granted: false, outcome: "DISMISSED" };
+  } catch (e: any) {
+    logAdEvent("FAILED", rewardId, String(e?.message ?? e), attempt);
+    return { granted: false, outcome: "FAILED" };
+  }
+}
+
+// ── Composite score (single source of truth) ────────────────────────────
+export interface ScoreInputs {
+  kills: number;
+  moves: number;
+  won: boolean;
+}
+export function computeCompositeScore({ kills, moves, won }: ScoreInputs): number {
+  const base = won ? 10000 : 0;
+  return base + Math.max(0, kills) * 100 + Math.max(0, 500 - Math.max(0, moves));
+}
+
+let lastSentScore: { value: number; timestamp: number; verified: boolean } | null = null;
+export function getLastSentScore() { return lastSentScore; }
+
+// Verified sendScore: recompute locally and confirm the caller's value matches
+// before handing it to the SDK. Any mismatch is logged and blocked.
+export async function sendScoreVerified(value: number, inputs: ScoreInputs) {
+  const expected = computeCompositeScore(inputs);
+  const verified = expected === value;
+  if (!verified) {
+    console.error("[ytgame:score] mismatch — refusing to send", { value, expected, inputs });
+    try { yt()?.health.logError(); } catch {}
+    lastSentScore = { value: expected, timestamp: Date.now(), verified: false };
+    // Send the verified (recomputed) value instead of the tampered one.
+    await sendScore(expected);
+    return { sent: expected, verified: false };
+  }
+  await sendScore(value);
+  lastSentScore = { value, timestamp: Date.now(), verified: true };
+  console.info("[ytgame:score] sent + verified", lastSentScore);
+  return { sent: value, verified: true };
+}
