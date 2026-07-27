@@ -22,6 +22,12 @@ const en: Dict = {
   "reward.button": "🎁 Free reroll (ad)",
   "reward.granted": "Reward unlocked: your next roll is a 6!",
   "reward.failed": "Ad not completed — no reward.",
+  "reward.dismissed": "Ad skipped — no reward. Try again?",
+  "reward.error": "Ad failed to load. Retry?",
+  "reward.timeout": "Ad timed out. Retry?",
+  "reward.retry": "Retry ad",
+  "reward.loading": "Loading ad…",
+  "action.debug": "Debug panel",
 };
 
 const dicts: Record<string, Dict> = {
