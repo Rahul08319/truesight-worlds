@@ -24,6 +24,8 @@ import { useGameChat } from '@/hooks/useGameChat';
 import * as yt from '@/lib/ytPlayables';
 import { runSmokeTest } from '@/lib/ytSmokeTest';
 import { useTranslations } from '@/lib/i18n';
+import DebugPanel from '@/components/DebugPanel';
+import { createGrant, applyGrantOnce, pendingGrants } from '@/lib/rewardGrants';
 import woodTable from '@/assets/wood-table.jpg';
 
 let logIdCounter = 0;
@@ -34,6 +36,8 @@ const LudoGame: React.FC = () => {
   const [soundOn, setSoundOn] = useState(true);
   const [guaranteedSix, setGuaranteedSix] = useState(0);
   const [rewardBusy, setRewardBusy] = useState(false);
+  const [rewardError, setRewardError] = useState<null | { outcome: yt.AdOutcome; attempts: number }>(null);
+  const [showDebug, setShowDebug] = useState(false);
   const [bestScore, setBestScore] = useState(0);
   const { t } = useTranslations();
   const [animatingToken, setAnimatingToken] = useState<{ color: PlayerColor; id: number } | null>(null);
@@ -137,31 +141,69 @@ const LudoGame: React.FC = () => {
     const wp = gameState.players.find(p => p.color === gameState.winner);
     if (!wp) return;
     const stats = gameStats.perPlayer[wp.color];
-    // Composite score: wins are dominant, kills add flavor, fewer moves wins ties.
-    const score = 10000 + (stats?.kills ?? 0) * 100 + Math.max(0, 500 - (stats?.moves ?? 0));
-    // Report the best score achieved by this player to YouTube.
+    // Composite score computed via the shared helper so the local
+    // verification step and the SDK payload always agree.
+    const inputs = { kills: stats?.kills ?? 0, moves: stats?.moves ?? 0, won: true };
+    const score = yt.computeCompositeScore(inputs);
     const finalScore = Math.max(score, bestScore);
     setBestScore(finalScore);
-    yt.sendScore(finalScore);
+    // sendScoreVerified recomputes locally and refuses mismatches.
+    yt.sendScoreVerified(score, inputs);
     yt.requestInterstitialAd();
   }, [gameState?.phase, gameState?.winner]);
 
+  // Apply any grants that succeeded before a refresh/resume. Runs once
+  // and only ever applies each grantId a single time.
+  useEffect(() => {
+    const pending = pendingGrants();
+    if (pending.length === 0) return;
+    let applied = 0;
+    for (const g of pending) {
+      if (applyGrantOnce(g.id)) applied++;
+    }
+    if (applied > 0) setGuaranteedSix(n => n + applied);
+  }, []);
+
   // Rewarded ad: watch an ad to guarantee your next roll is a 6.
-  const handleWatchRewardedAd = useCallback(async () => {
+  // Handles timeouts, tracks structured analytics, and exposes retry state.
+  const REWARD_ID = 'free_reroll_v1';
+  const runRewardedAd = useCallback(async (attempt: number) => {
     if (rewardBusy) return;
     setRewardBusy(true);
+    setRewardError(null);
+    setGameState(gs => gs ? { ...gs, message: t('reward.loading') } : gs);
     try {
-      const granted = await yt.requestRewardedAd('free_reroll_v1');
+      const { granted, outcome } = await yt.requestRewardedAdTracked(REWARD_ID, {
+        timeoutMs: 30_000,
+        attempt,
+      });
       if (granted) {
-        setGuaranteedSix(n => n + 1);
+        // Persist BEFORE applying, so a refresh in the next tick still grants.
+        const grant = createGrant(REWARD_ID);
+        if (applyGrantOnce(grant.id)) {
+          setGuaranteedSix(n => n + 1);
+        }
+        setRewardError(null);
         setGameState(gs => gs ? { ...gs, message: t('reward.granted') } : gs);
       } else {
-        setGameState(gs => gs ? { ...gs, message: t('reward.failed') } : gs);
+        setRewardError({ outcome, attempts: attempt });
+        const key = outcome === 'DISMISSED' ? 'reward.dismissed'
+          : outcome === 'TIMEOUT' ? 'reward.timeout'
+          : 'reward.error';
+        setGameState(gs => gs ? { ...gs, message: t(key) } : gs);
       }
     } finally {
       setRewardBusy(false);
     }
   }, [rewardBusy, t]);
+
+  const handleWatchRewardedAd = useCallback(() => runRewardedAd(1), [runRewardedAd]);
+  const handleRetryRewardedAd = useCallback(() => {
+    const next = (rewardError?.attempts ?? 0) + 1;
+    if (next > 3) return; // cap retries
+    yt.logAdEvent('RETRY', REWARD_ID, undefined, next);
+    runRewardedAd(next);
+  }, [rewardError, runRewardedAd]);
   // ─────────────────────────────────────────────────────────────────────────
 
   const handleMention = useCallback((colors: PlayerColor[]) => {
@@ -574,6 +616,13 @@ const LudoGame: React.FC = () => {
                 </button>
               }
             />
+            <button
+              onClick={() => setShowDebug(d => !d)}
+              className="px-2.5 py-2 rounded-lg bg-card/80 backdrop-blur-sm text-foreground text-sm hover:bg-card transition-colors"
+              title={t('action.debug')}
+            >
+              🐞
+            </button>
           </div>
         </div>
 
@@ -599,14 +648,27 @@ const LudoGame: React.FC = () => {
           </div>
 
           {isHumanTurn && gameState.phase !== 'finished' && (
-            <button
-              onClick={handleWatchRewardedAd}
-              disabled={rewardBusy}
-              className="px-3 py-2 rounded-xl text-sm font-semibold bg-amber-500/90 text-amber-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
-              title={t('reward.button')}
-            >
-              {guaranteedSix > 0 ? `🎲 x${guaranteedSix}` : t('reward.button')}
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={handleWatchRewardedAd}
+                disabled={rewardBusy}
+                className="px-3 py-2 rounded-xl text-sm font-semibold bg-amber-500/90 text-amber-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
+                title={t('reward.button')}
+              >
+                {rewardBusy ? t('reward.loading')
+                  : guaranteedSix > 0 ? `🎲 x${guaranteedSix}`
+                  : t('reward.button')}
+              </button>
+              {rewardError && rewardError.outcome !== 'GRANTED' && !rewardBusy && (rewardError.attempts < 3) && (
+                <button
+                  onClick={handleRetryRewardedAd}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/90 text-white hover:bg-red-400 transition-colors"
+                  title={t('reward.retry')}
+                >
+                  🔄 {t('reward.retry')} ({rewardError.attempts}/3)
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -652,6 +714,8 @@ const LudoGame: React.FC = () => {
           onToggleReaction={chat.toggleReaction}
         />
       )}
+
+      <DebugPanel open={showDebug} onClose={() => setShowDebug(false)} />
     </div>
   );
 };
