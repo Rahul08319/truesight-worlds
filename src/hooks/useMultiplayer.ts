@@ -8,11 +8,40 @@ function generateRoomCode(): string {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+let memoryPlayerId: string | null = null;
+
+function safeStorage(): Storage | null {
+  try {
+    return typeof window !== 'undefined' ? window.sessionStorage ?? null : null;
+  } catch {
+    return null;
+  }
+}
+
+function newId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `p_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 function generatePlayerId(): string {
-  const stored = sessionStorage.getItem('ludo_player_id');
-  if (stored) return stored;
-  const id = crypto.randomUUID();
-  sessionStorage.setItem('ludo_player_id', id);
+  const store = safeStorage();
+  try {
+    const stored = store?.getItem('ludo_player_id');
+    if (stored) return stored;
+  } catch {
+    // storage blocked (e.g. sandboxed embed) — fall through to memory
+  }
+  if (memoryPlayerId) return memoryPlayerId;
+  const id = newId();
+  memoryPlayerId = id;
+  try {
+    store?.setItem('ludo_player_id', id);
+  } catch {
+    // ignore
+  }
   return id;
 }
 
